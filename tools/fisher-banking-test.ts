@@ -162,8 +162,42 @@ try {
 
         await page.screenshot({ path: 'out/fisher-banking-test.png' });
         console.log('\nresult: cycle mode (auto-detect -> fill -> bank -> deposit raw only -> resume) — PASS');
+    } else if (mode === 'casket') {
+        // regression for 1025f72: a random-event Casket picked up mid-session must be
+        // banked with the catch, not left in the pack. Spawn casket + a near-full pack
+        // so the first bank trip fires at once, then assert the casket left the inventory.
+        await standAt(TELE_DRAYNOR_SPOTS);
+        // standAt's ::advancestat can pop a level-up dialog that eats the trailing
+        // tele; clear it and confirm we're at the Draynor spots before starting.
+        let atSpots = false;
+        for (let i = 0; i < 3 && !atSpots; i++) {
+            await page.keyboard.press('Space');
+            await type(TELE_DRAYNOR_SPOTS);
+            const t = await tile();
+            atSpots = t !== null && Math.max(Math.abs(t.x - 3086), Math.abs(t.z - 3231)) <= 12;
+        }
+        if (!atSpots) fail('could not reach the Draynor fishing spots');
+
+        await type('::give casket');
+        const hasCasket = () => page.evaluate(() => (globalThis as never as Rs2b0t).rs2b0t.reader.inventory().some(i => (i.name ?? '').toLowerCase() === 'casket'));
+        if (!(await hasCasket())) fail('setup failed — casket did not spawn into the pack');
+        console.log('at the Draynor spots with a Casket in the pack; fishing to a full load');
+
+        await selectScript(/^Fishing/, 'Fisher');
+        await page.getByRole('button', { name: 'Start' }).click();
+        console.log('Fisher started; awaiting the first bank trip...');
+
+        if (!(await waitForLog(/banked \d+ \*raw\*/, 480000))) {
+            await page.screenshot({ path: 'out/fisher-casket-test.png' });
+            fail('no bank trip completed within budget (see out/fisher-casket-test.png)');
+        }
+        if (await hasCasket()) fail('Casket still in the pack after banking — deposit filter missed it (regression of 1025f72)');
+        if (!(await hasNet())) fail('net missing after the deposit — filter too broad');
+
+        await page.screenshot({ path: 'out/fisher-casket-test.png' });
+        console.log('\nresult: casket mode (random-event Casket banked with the catch) — PASS');
     } else {
-        fail(`unknown mode '${mode}' (schema|away|walkin|cycle)`);
+        fail(`unknown mode '${mode}' (schema|away|walkin|cycle|casket)`);
     }
 } finally {
     await browser.close();
