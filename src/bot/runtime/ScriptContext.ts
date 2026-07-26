@@ -59,6 +59,7 @@ export class ScriptContext {
             try {
                 listener();
             } catch {
+                // One faulty observer must not break script lifecycle logging.
             }
         }
     }

@@ -113,8 +113,7 @@ src/
     scripts/      bundled example bots
     nav/          world-walking (collision pack, door/transport graph, A*)
     ui/           the in-client panel + overlay
-  client/         the 2004scape browser client
-  config/         build-time server target (local | live | prod)
+patches/           the small rs2b0t integration patch for Client-TS
 packages/
   rs2b0t-api/     the @rs2b0t/api shim external scripts compile against
 templates/
@@ -123,10 +122,14 @@ tools/            build/deploy scripts + headless test harnesses
 docs/             API.md, DEV.md
 ```
 
+The browser client is pinned to upstream Client-TS and restored with a small,
+audited integration patch during `bun install`; see
+[`docs/architecture/client-dependency.md`](docs/architecture/client-dependency.md).
+
 ## How it connects
 
-The client resolves its game server from the build target
-(`src/config/target.ts`): `local` and `prod` talk **same-origin** to whatever
+The pinned Client-TS dependency resolves its game server through the rs2b0t
+integration patch (`patches/client2-rs2b0t.patch`): `local` and `prod` talk **same-origin** to whatever
 origin served the page; `live` targets the world host directly (used with a
 local reverse proxy for development). The hosted `prod` build is baked into the
 engine image and served same-origin from the game server — no proxy.

@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 
-import { extractLoginModulus, loginExponent, loginModulus, parseLoginModulus, refreshLoginKey, resetLoginKey } from '#/config/loginKey.js';
+import { extractLoginModulus, loginExponent, loginModulus, parseLoginModulus, refreshLoginKey, resetLoginKey } from '#client/config/loginKey.js';
 
 const MODULUS_A = '1'.repeat(309);
 const MODULUS_B = '2'.repeat(309);

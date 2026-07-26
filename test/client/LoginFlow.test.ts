@@ -1,18 +1,18 @@
 import { expect, mock, test } from 'bun:test';
 
-import type ClientStream from '#/io/ClientStream.js';
+import type ClientStream from '#client/io/ClientStream.js';
 
-mock.module('#3rdparty/audio.js', () => ({
+mock.module('#client/3rdparty/audio.js', () => ({
     playWave: async (): Promise<void> => {},
     setWaveVolume: (): void => {}
 }));
-mock.module('#3rdparty/tinymidipcm.js', () => ({
+mock.module('#client/3rdparty/tinymidipcm.js', () => ({
     playMidi: (): void => {},
     setMidiVolume: (): void => {},
     stopMidi: (): void => {}
 }));
 
-const { Client } = await import('#/client/Client.js');
+const { Client } = await import('#client/client/Client.js');
 
 interface AttemptView {
     cancelled: boolean;

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { WorkerClock } from '#/util/WorkerClock.js';
+import { WorkerClock } from '#client/util/WorkerClock.js';
 
 test('sleep falls back to setTimeout and resolves after ~ms when Worker is unavailable', async () => {
     const saved = (globalThis as { Worker?: unknown }).Worker;

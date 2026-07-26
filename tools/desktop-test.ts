@@ -70,7 +70,7 @@ try {
     console.log('PASS: loop kept full speed while hidden (no background throttle)');
 
     const gapsBefore = await page.evaluate(() => (globalThis as never as Rs2b0t).rs2b0t.scheduler.gapShifts);
-    await page.evaluate(() => { const end = performance.now() + 2500; while (performance.now() < end) { } });
+    await page.evaluate(() => { const end = performance.now() + 2500; while (performance.now() < end) { /* deliberate event-loop stall */ } });
     await page.waitForTimeout(1500);
     const gapsAfter = await page.evaluate(() => (globalThis as never as Rs2b0t).rs2b0t.scheduler.gapShifts);
     if (gapsAfter <= gapsBefore) {

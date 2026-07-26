@@ -1,4 +1,4 @@
-import { MiniMenuAction } from '#/client/MiniMenuAction.js';
+import { MiniMenuAction } from '#client/client/MiniMenuAction.js';
 
 import { actions } from '../adapter/ClientAdapter.js';
 import type { InputDriver } from './InputDriver.js';

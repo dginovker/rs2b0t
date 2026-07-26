@@ -70,7 +70,7 @@ try {
     const deadline = Date.now() + budgetMin * 60_000;
     let seen = 0;
     let s = await sample(page);
-    let withdrewNoted = false, withdrewUnnoted = false, ok = false;
+    let withdrewNoted = false, ok = false;
     while (Date.now() < deadline) {
         s = await sample(page);
         const secs = Math.round((budgetMin * 60_000 - (deadline - Date.now())) / 1000);
@@ -79,7 +79,6 @@ try {
             const m = s.logs[i];
             console.log(`      · ${m}`);
             if (/withdrew .* \(noted\)/.test(m)) { withdrewNoted = true; }
-            if (/withdrew .* \(unnoted\)/.test(m)) { withdrewUnnoted = true; }
         }
         seen = s.logs.length;
         // Un-noted a deliverable batch on Karamja = bank note-withdraw + ship + Jiminua un-note all worked.

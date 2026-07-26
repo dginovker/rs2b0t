@@ -1,11 +1,11 @@
-import { MiniMenuAction } from '#/client/MiniMenuAction.js';
-import Skill from '#/client/Skill.js';
-import { ButtonType, ComponentType } from '#/config/IfType.js';
-import IfType from '#/config/IfType.js';
-import LocType from '#/config/LocType.js';
-import ObjType from '#/config/ObjType.js';
-import CollisionMap from '#/dash3d/CollisionMap.js';
-import { ClientProt } from '#/io/ClientProt.js';
+import { MiniMenuAction } from '#client/client/MiniMenuAction.js';
+import Skill from '#client/client/Skill.js';
+import { ButtonType, ComponentType } from '#client/config/IfType.js';
+import IfType from '#client/config/IfType.js';
+import LocType from '#client/config/LocType.js';
+import ObjType from '#client/config/ObjType.js';
+import CollisionMap from '#client/dash3d/CollisionMap.js';
+import { ClientProt } from '#client/io/ClientProt.js';
 
 import { SELF_TEST, type RawClient } from './RawClient.js';
 

@@ -29,6 +29,7 @@ mock.module('#/bot/api/hud/Inventory.js', () => ({
             return [...clue, ...tools];
         },
         first: (name: string) => (held.includes(name) ? { name } : null),
+        contains: (name: string) => held.includes(name),
         count: (name: string) => held.filter(n => n === name).length
     }
 }));

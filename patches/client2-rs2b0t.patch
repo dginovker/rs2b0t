@@ -1,0 +1,2189 @@
+diff --git a/src/client/Client.ts b/src/client/Client.ts
+index 6da2875..3ad7944 100644
+--- a/src/client/Client.ts
++++ b/src/client/Client.ts
+@@ -23,0 +24,2 @@ import { ComponentType, ButtonType } from '#/config/IfType.js';
++import { TARGET } from '#/config/target.js';
++import { loginExponent, loginModulus, refreshLoginKey } from '#/config/loginKey.js';
+@@ -87,0 +90,11 @@ const SCROLLBAR_GRIP_LOWLIGHT = 0x332d25;
++interface LoginAttempt {
++    cancelled: boolean;
++    stream: ClientStream | null;
++    done: Promise<void>;
++}
++
++interface LoginStart {
++    accepted: boolean;
++    done: Promise<void>;
++}
++
+@@ -287,0 +301 @@ export class Client extends GameShell {
++    private loginAttempt: LoginAttempt | null = null;
+@@ -567,2 +580,0 @@ export class Client extends GameShell {
+-    // ----
+-
+@@ -644 +656 @@ export class Client extends GameShell {
+-            canvas2d.fillText('2: Try clearing your web-browsers cache', 30, y); // "2: Try clearing your web-browsers cache from tools->internet options"
++            canvas2d.fillText('2: Try clearing your web-browsers cache', 30, y);
+@@ -653 +665 @@ export class Client extends GameShell {
+-            canvas2d.fillText('5: Try selecting a different method from the play-game menu', 30, y); // "5: Try selecting a different version of Java from the play-game menu"
++            canvas2d.fillText('5: Try selecting a different method from the play-game menu', 30, y);
+@@ -666 +678 @@ export class Client extends GameShell {
+-            canvas2d.fillText('An approved domain', 50, y); // "http://www.runescape.com"
++            canvas2d.fillText('An approved domain', 50, y);
+@@ -744 +755,0 @@ export class Client extends GameShell {
+-                // the java client toggles a "JAGGRAB" HTTP fallback here
+@@ -760 +770,0 @@ export class Client extends GameShell {
+-            // empty
+@@ -785 +794,0 @@ export class Client extends GameShell {
+-                        // empty
+@@ -817,2 +825,0 @@ export class Client extends GameShell {
+-    // ----
+-
+@@ -821 +827,0 @@ export class Client extends GameShell {
+-            // force mobile on low detail mode to 30 fps
+@@ -839 +844,0 @@ export class Client extends GameShell {
+-            // possibly incognito mode
+@@ -879 +884 @@ export class Client extends GameShell {
+-                this.midiSong = 0; // scape_main
++                this.midiSong = 0;
+@@ -1026 +1030,0 @@ export class Client extends GameShell {
+-                // empty
+@@ -1034 +1037,0 @@ export class Client extends GameShell {
+-                // empty
+@@ -1042 +1044,0 @@ export class Client extends GameShell {
+-                // empty
+@@ -1050 +1051,0 @@ export class Client extends GameShell {
+-                // empty
+@@ -1295,0 +1297 @@ export class Client extends GameShell {
++        this.cancelLoginAttempt();
+@@ -1311,2 +1312,0 @@ export class Client extends GameShell {
+-    // ----
+-
+@@ -1396,0 +1397,16 @@ export class Client extends GameShell {
++            const buttonY: number = ((this.sHei / 2) | 0) + 70;
++            const cancelX: number = ((this.sWid / 2) | 0) + 80;
++            if (this.mouseClickButton === 1 && this.mouseClickX >= cancelX - 75 && this.mouseClickX <= cancelX + 75 && this.mouseClickY >= buttonY - 20 && this.mouseClickY <= buttonY + 20) {
++                this.cancelLoginAttempt();
++                this.loginscreen = 0;
++                this.loginUser = '';
++                this.loginPass = '';
++                return;
++            }
++
++            // A programmatic login keeps the native screen live while the socket is
++            // pending. Do not let queued game input edit or resubmit credentials.
++            if (this.loginAttempt) {
++                return;
++            }
++
+@@ -1409,8 +1424,0 @@ export class Client extends GameShell {
+-            // y += 15; dead code
+-
+-            let x = ((this.sWid / 2) | 0) - 80;
+-            y = ((this.sHei / 2) | 0) + 50;
+-            y += 20;
+-
+-            if (this.mouseClickButton === 1 && this.mouseClickX >= x - 75 && this.mouseClickX <= x + 75 && this.mouseClickY >= y - 20 && this.mouseClickY <= y + 20) {
+-                await this.login(this.loginUser, this.loginPass, false);
+@@ -1418,4 +1426 @@ export class Client extends GameShell {
+-                if (this.ingame) {
+-                    return;
+-                }
+-            }
++            const loginX: number = ((this.sWid / 2) | 0) - 80;
+@@ -1423,5 +1428,3 @@ export class Client extends GameShell {
+-            x = ((this.sWid / 2) | 0) + 80;
+-            if (this.mouseClickButton === 1 && this.mouseClickX >= x - 75 && this.mouseClickX <= x + 75 && this.mouseClickY >= y - 20 && this.mouseClickY <= y + 20) {
+-                this.loginscreen = 0;
+-                this.loginUser = '';
+-                this.loginPass = '';
++            if (this.mouseClickButton === 1 && this.mouseClickX >= loginX - 75 && this.mouseClickX <= loginX + 75 && this.mouseClickY >= buttonY - 20 && this.mouseClickY <= buttonY + 20) {
++                this.startLogin(this.loginUser, this.loginPass);
++                return;
+@@ -1662 +1664,0 @@ export class Client extends GameShell {
+-        // draw right side (mirror image)
+@@ -1718,0 +1721,46 @@ export class Client extends GameShell {
++    public startLogin(username: string, password: string): boolean {
++        return this.beginLogin(username, password, false).accepted;
++    }
++
++    private beginLogin(username: string, password: string, reconnect: boolean): LoginStart {
++        if (this.loginAttempt) {
++            return { accepted: false, done: this.loginAttempt.done };
++        }
++        if (this.ingame) {
++            return { accepted: false, done: Promise.resolve() };
++        }
++
++        if (!reconnect) {
++            this.loginscreen = 2;
++            this.loginSelect = 0;
++            this.loginUser = username;
++            this.loginPass = password;
++            this.loginMes1 = '';
++            this.loginMes2 = 'Connecting to server...';
++        }
++
++        const attempt: LoginAttempt = {
++            cancelled: false,
++            stream: null,
++            done: Promise.resolve()
++        };
++        this.loginAttempt = attempt;
++        attempt.done = this.performLogin(username, password, reconnect, attempt)
++            .catch((error: unknown): void => {
++                if (!this.isLoginAttemptActive(attempt)) {
++                    return;
++                }
++                this.closeLoginStream(attempt);
++                console.error('[client] login failed', error);
++                this.loginMes1 = '';
++                this.loginMes2 = 'Error connecting to server.';
++            })
++            .finally((): void => {
++                if (this.loginAttempt === attempt) {
++                    this.loginAttempt = null;
++                }
++            });
++
++        return { accepted: true, done: attempt.done };
++    }
++
+@@ -1719,0 +1768,37 @@ export class Client extends GameShell {
++        await this.beginLogin(username, password, reconnect).done;
++    }
++
++    private isLoginAttemptActive(attempt: LoginAttempt): boolean {
++        return this.loginAttempt === attempt && !attempt.cancelled;
++    }
++
++    private closeLoginStream(attempt: LoginAttempt): void {
++        const stream = attempt.stream;
++        attempt.stream = null;
++        stream?.close();
++        if (this.stream === stream) {
++            this.stream = null;
++        }
++    }
++
++    private cancelLoginAttempt(): void {
++        const attempt = this.loginAttempt;
++        if (!attempt) {
++            return;
++        }
++        attempt.cancelled = true;
++        this.closeLoginStream(attempt);
++        if (this.loginAttempt === attempt) {
++            this.loginAttempt = null;
++        }
++    }
++
++    protected async openLoginStream(): Promise<ClientStream> {
++        return new ClientStream(await ClientStream.openSocket(TARGET.wsHost, TARGET.tls));
++    }
++
++    protected async loginSleep(ms: number): Promise<void> {
++        await sleep(ms);
++    }
++
++    private async performLogin(username: string, password: string, reconnect: boolean, attempt: LoginAttempt): Promise<void> {
+@@ -1724,0 +1810,3 @@ export class Client extends GameShell {
++                if (!this.isLoginAttemptActive(attempt)) {
++                    return;
++                }
+@@ -1727 +1815,7 @@ export class Client extends GameShell {
+-            this.stream = new ClientStream(await ClientStream.openSocket(window.location.host, window.location.protocol === 'https:'));
++            const stream = await this.openLoginStream();
++            if (!this.isLoginAttemptActive(attempt)) {
++                stream.close();
++                return;
++            }
++            attempt.stream = stream;
++            this.stream = stream;
+@@ -1736 +1830 @@ export class Client extends GameShell {
+-            this.stream.write(this.out.data, 2);
++            stream.write(this.out.data, 2);
+@@ -1738 +1832,4 @@ export class Client extends GameShell {
+-                await this.stream.read();
++                await stream.read();
++            }
++            if (!this.isLoginAttemptActive(attempt)) {
++                return;
+@@ -1741 +1838,4 @@ export class Client extends GameShell {
+-            let response: number = await this.stream.read();
++            let response: number = await stream.read();
++            if (!this.isLoginAttemptActive(attempt)) {
++                return;
++            }
+@@ -1743 +1843,4 @@ export class Client extends GameShell {
+-                await this.stream.readBytes(this.in.data, 0, 8);
++                await stream.readBytes(this.in.data, 0, 8);
++                if (!this.isLoginAttemptActive(attempt)) {
++                    return;
++                }
+@@ -1748 +1851 @@ export class Client extends GameShell {
+-                    Math.floor(Math.random() * 99999999), 
++                    Math.floor(Math.random() * 99999999),
+@@ -1760 +1863 @@ export class Client extends GameShell {
+-                this.out.p4(1337); // uid
++                this.out.p4(1337);
+@@ -1763 +1866 @@ export class Client extends GameShell {
+-                this.out.rsaenc(BigInt(process.env.LOGIN_RSAN!), BigInt(process.env.LOGIN_RSAE!));
++                this.out.rsaenc(loginModulus(), loginExponent());
+@@ -1787 +1890 @@ export class Client extends GameShell {
+-                this.stream?.write(this.loginout.data, this.loginout.pos);
++                stream.write(this.loginout.data, this.loginout.pos);
+@@ -1789 +1892,4 @@ export class Client extends GameShell {
+-                response = await this.stream.read();
++                response = await stream.read();
++                if (!this.isLoginAttemptActive(attempt)) {
++                    return;
++                }
+@@ -1793,2 +1899,6 @@ export class Client extends GameShell {
+-                await sleep(2000);
+-                await this.login(username, password, reconnect);
++                this.closeLoginStream(attempt);
++                await this.loginSleep(2000);
++                if (!this.isLoginAttemptActive(attempt)) {
++                    return;
++                }
++                await this.performLogin(username, password, reconnect, attempt);
+@@ -1796,2 +1906,7 @@ export class Client extends GameShell {
+-                this.staffmodlevel = await this.stream.read();
+-                this.mouseTracked = (await this.stream.read()) === 1;
++                const staffmodlevel = await stream.read();
++                const mouseTracked = (await stream.read()) === 1;
++                if (!this.isLoginAttemptActive(attempt)) {
++                    return;
++                }
++                this.staffmodlevel = staffmodlevel;
++                this.mouseTracked = mouseTracked;
+@@ -1916,2 +2031,6 @@ export class Client extends GameShell {
+-                this.loginMes1 = 'RuneScape has been updated!';
+-                this.loginMes2 = 'Please reload this page.';
++                if (await refreshLoginKey()) {
++                    await this.login(username, password, reconnect);
++                } else {
++                    this.loginMes1 = 'RuneScape has been updated!';
++                    this.loginMes2 = 'Please reload this page.';
++                }
+@@ -1931 +2050 @@ export class Client extends GameShell {
+-                this.loginMes2 = 'Login server rejected session.'; // [sic] loginMes2
++                this.loginMes1 = 'Login server rejected session.';
+@@ -1966 +2085,4 @@ export class Client extends GameShell {
+-                for (let remaining = await this.stream.read(); remaining >= 0; remaining--) {
++                for (let remaining = await stream.read(); remaining >= 0; remaining--) {
++                    if (!this.isLoginAttemptActive(attempt)) {
++                        return;
++                    }
+@@ -1971 +2093 @@ export class Client extends GameShell {
+-                    await sleep(1000);
++                    await this.loginSleep(1000);
+@@ -1974 +2096,5 @@ export class Client extends GameShell {
+-                await this.login(username, password, reconnect);
++                this.closeLoginStream(attempt);
++                if (!this.isLoginAttemptActive(attempt)) {
++                    return;
++                }
++                await this.performLogin(username, password, reconnect, attempt);
+@@ -1979,0 +2106,4 @@ export class Client extends GameShell {
++
++            if (!this.ingame && this.isLoginAttemptActive(attempt)) {
++                this.closeLoginStream(attempt);
++            }
+@@ -1980,0 +2111,4 @@ export class Client extends GameShell {
++            if (!this.isLoginAttemptActive(attempt)) {
++                return;
++            }
++            this.closeLoginStream(attempt);
+@@ -1982 +2115,0 @@ export class Client extends GameShell {
+-                // IO error
+@@ -1986 +2118,0 @@ export class Client extends GameShell {
+-                // exceptions in Java get stuck permanently on "Connecting to server..."
+@@ -2039 +2170,0 @@ export class Client extends GameShell {
+-            // client is unloading asynchronously
+@@ -2052 +2182,0 @@ export class Client extends GameShell {
+-            // empty
+@@ -2069,2 +2198,0 @@ export class Client extends GameShell {
+-            // custom: Java client checks `start - this.out.pos < 240` but this is obviously wrong
+-            //   and will lead to an invalid packet if the user is buffering a lot of mouse movements (i.e. while disconnected)
+@@ -2196 +2323,0 @@ export class Client extends GameShell {
+-            // no packets received recently, connection lost
+@@ -2358,4 +2485,7 @@ export class Client extends GameShell {
+-        if (now - this.idleTimer > 90_000) {
+-            // no input in 90s, notify the server
+-            this.logoutTimer = 250;
+-            this.idleTimer += 10_000; // 10s backoff
++        if (now - this.idleTimer > 300_000) {
++            const runner = (globalThis as unknown as { rs2b0t?: { runner?: { state?: string } } }).rs2b0t?.runner;
++            if (runner?.state === 'running') {
++                this.idleTimer = performance.now();
++            } else {
++                this.logoutTimer = 250;
++                this.idleTimer += 10_000;
+@@ -2363 +2493,2 @@ export class Client extends GameShell {
+-            this.out.p1Enc(ClientProt.IDLE_TIMER);
++                this.out.p1Enc(ClientProt.IDLE_TIMER);
++            }
+@@ -2431 +2561,0 @@ export class Client extends GameShell {
+-            // nothing sent in the last 1s, keep the client connected
+@@ -2443 +2572,0 @@ export class Client extends GameShell {
+-                // IO error
+@@ -2446 +2574,0 @@ export class Client extends GameShell {
+-                // logic error
+@@ -2452,0 +2581 @@ export class Client extends GameShell {
++        this.cancelLoginAttempt();
+@@ -2513 +2641,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -2600 +2727,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -2658 +2784,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -2771 +2896,0 @@ export class Client extends GameShell {
+-            // the additional 14-bytes in MOVE_MINIMAPCLICK
+@@ -2786 +2910,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -2851 +2974,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -2936 +3058,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -3039 +3160,0 @@ export class Client extends GameShell {
+-                                    // empty
+@@ -3050 +3170,0 @@ export class Client extends GameShell {
+-                        // custom: when typing a command, you can use the debugproc character (tilde)
+@@ -3076 +3195,0 @@ export class Client extends GameShell {
+-                            // custom: player-facing commands
+@@ -3078 +3196,0 @@ export class Client extends GameShell {
+-                                // authentic in later revs
+@@ -3081 +3198,0 @@ export class Client extends GameShell {
+-                                // authentic in later revs
+@@ -3084 +3200,0 @@ export class Client extends GameShell {
+-                                // authentic in later revs
+@@ -3089 +3204,0 @@ export class Client extends GameShell {
+-                                    // empty
+@@ -3207 +3321,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -3218 +3331,0 @@ export class Client extends GameShell {
+-        // this.stream?.debug();
+@@ -3224 +3337 @@ export class Client extends GameShell {
+-            return; // custom
++            return;
+@@ -3430 +3542,0 @@ export class Client extends GameShell {
+-                    // empty
+@@ -3886 +3998 @@ export class Client extends GameShell {
+-        await sleep(5); // return a slice of time to the main loop so it can update the progress bar
++        await sleep(5);
+@@ -3889 +4000,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -3892 +4002,0 @@ export class Client extends GameShell {
+-            // client is unloading asynchronously
+@@ -4240,0 +4351 @@ export class Client extends GameShell {
++        Model.frameStamp++;
+@@ -4469 +4580 @@ export class Client extends GameShell {
+-            return 0; // custom
++            return 0;
+@@ -4793 +4903,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -4876 +4985,0 @@ export class Client extends GameShell {
+-        // custom: taken from later client
+@@ -4914 +5022,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -4990 +5097,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -5001 +5107,0 @@ export class Client extends GameShell {
+-        // tutorial island
+@@ -5054 +5160 @@ export class Client extends GameShell {
+-            return 0; // custom
++            return 0;
+@@ -5089 +5194,0 @@ export class Client extends GameShell {
+-                // "game loop check ..."
+@@ -5103 +5208 @@ export class Client extends GameShell {
+-            return -1000; // custom
++            return -1000;
+@@ -5164 +5268,0 @@ export class Client extends GameShell {
+-                    // underground pass check
+@@ -5830 +5934 @@ export class Client extends GameShell {
+-            bufferSize = Math.min(length, 25); // max number of turns in a single pf request
++            bufferSize = Math.min(length, 25);
+@@ -6249 +6352,0 @@ export class Client extends GameShell {
+-                    // [sic] redundant assignment
+@@ -6514 +6616,0 @@ export class Client extends GameShell {
+-                        // signlink.reporterror('cde1'); TODO?
+@@ -6723 +6824,0 @@ export class Client extends GameShell {
+-                    // custom: we don't have access to the user's DNS resolver in a browser, but we can use DNS over HTTPS (DoH)
+@@ -6727 +6827,0 @@ export class Client extends GameShell {
+-                        // we're using localhost as a privacy flag for now
+@@ -7004 +7103,0 @@ export class Client extends GameShell {
+-                // "Resetting variables to authoritative set"
+@@ -7129 +7227,0 @@ export class Client extends GameShell {
+-            // (java tries to report this to the world)
+@@ -7134 +7231,0 @@ export class Client extends GameShell {
+-                // IO error
+@@ -7137 +7233,0 @@ export class Client extends GameShell {
+-                // logic error
+@@ -7144 +7239,0 @@ export class Client extends GameShell {
+-                // (java tries to report this to the world)
+@@ -7594 +7689 @@ export class Client extends GameShell {
+-            return; // custom
++            return;
+@@ -7940 +8034,0 @@ export class Client extends GameShell {
+-                        // signlink.reporterror('cde2');
+@@ -8486 +8579,0 @@ export class Client extends GameShell {
+-        // the sidebar/tabs area
+@@ -8510 +8602,0 @@ export class Client extends GameShell {
+-        // the chatbox area
+@@ -9627 +9718,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -9843 +9933,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -9876 +9965,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -10267 +10355,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -10419 +10506,0 @@ export class Client extends GameShell {
+-                    // stat_level {skill}
+@@ -10422 +10508,0 @@ export class Client extends GameShell {
+-                    // stat_base_level {skill}
+@@ -10425 +10510,0 @@ export class Client extends GameShell {
+-                    // stat_xp {skill}
+@@ -10428 +10512,0 @@ export class Client extends GameShell {
+-                    // inv_count {interface id} {obj id}
+@@ -10440 +10523,0 @@ export class Client extends GameShell {
+-                    // pushvar {id}
+@@ -10443 +10525,0 @@ export class Client extends GameShell {
+-                    // stat_xp_remaining {skill}
+@@ -10448 +10529,0 @@ export class Client extends GameShell {
+-                    // combat level
+@@ -10451 +10531,0 @@ export class Client extends GameShell {
+-                    // total level
+@@ -10458 +10537,0 @@ export class Client extends GameShell {
+-                    // inv_contains {interface id} {obj id}
+@@ -10471 +10549,0 @@ export class Client extends GameShell {
+-                    // runenergy
+@@ -10474 +10551,0 @@ export class Client extends GameShell {
+-                    // runweight
+@@ -10477 +10553,0 @@ export class Client extends GameShell {
+-                    // testbit {varp} {bit: 0..31}
+@@ -10483 +10558,0 @@ export class Client extends GameShell {
+-                    // push_varbit {varbit}
+@@ -10490 +10564,0 @@ export class Client extends GameShell {
+-                    // subtract
+@@ -10493 +10566,0 @@ export class Client extends GameShell {
+-                    // divide
+@@ -10496 +10568,0 @@ export class Client extends GameShell {
+-                    // multiply
+@@ -10499 +10570,0 @@ export class Client extends GameShell {
+-                    // coordx
+@@ -10504 +10574,0 @@ export class Client extends GameShell {
+-                    // coordz
+@@ -10509 +10578,0 @@ export class Client extends GameShell {
+-                    // push_constant
+@@ -10625 +10694 @@ export class Client extends GameShell {
+-                this.midiVolume = 0; // +0 dB
++                this.midiVolume = 0;
+@@ -10628 +10697 @@ export class Client extends GameShell {
+-                this.midiVolume = -4; // -4 dB
++                this.midiVolume = -4;
+@@ -10631 +10700 @@ export class Client extends GameShell {
+-                this.midiVolume = -8; // -8 dB
++                this.midiVolume = -8;
+@@ -10634 +10703 @@ export class Client extends GameShell {
+-                this.midiVolume = -12; // -12 dB
++                this.midiVolume = -12;
+@@ -10657 +10726 @@ export class Client extends GameShell {
+-                this.waveVolume = 0; // +0 dB
++                this.waveVolume = 0;
+@@ -10660 +10729 @@ export class Client extends GameShell {
+-                this.waveVolume = -4; // -4 dB
++                this.waveVolume = -4;
+@@ -10663 +10732 @@ export class Client extends GameShell {
+-                this.waveVolume = -8; // -8 dB
++                this.waveVolume = -8;
+@@ -10666 +10735 @@ export class Client extends GameShell {
+-                this.waveVolume = -12; // -12 dB
++                this.waveVolume = -12;
+@@ -10876 +10944,0 @@ export class Client extends GameShell {
+-                // custom: we're using localhost as a privacy flag for now
+@@ -11097 +11164,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -11124 +11190,0 @@ export class Client extends GameShell {
+-    // todo: order
+@@ -11390 +11455,0 @@ export class Client extends GameShell {
+-        // the white square local player position in the center of the minimap.
+@@ -11613,3 +11677,0 @@ export class Client extends GameShell {
+-    // ----
+-
+-    /// touch controls
+@@ -11620 +11681,0 @@ export class Client extends GameShell {
+-    // start
+@@ -11623 +11683,0 @@ export class Client extends GameShell {
+-    // mouse
+@@ -11626 +11685,0 @@ export class Client extends GameShell {
+-    // new
+@@ -11639,2 +11697,0 @@ export class Client extends GameShell {
+-            // custom: touchscreen support
+-            // we don't acknowledge the first press as a click, instead we interpret the user's gesture on release
+@@ -11664 +11720,0 @@ export class Client extends GameShell {
+-        // custom: up event comes before and potentially without move event
+@@ -11676,2 +11731,0 @@ export class Client extends GameShell {
+-            // custom: touchscreen support
+-            // we don't acknowledge the first press as a click, instead we interpret the user's gesture on release
+@@ -11691 +11744,0 @@ export class Client extends GameShell {
+-                // ignore up events if the player was moving the camera
+@@ -11694 +11746,0 @@ export class Client extends GameShell {
+-                // release all arrow keys
+@@ -11702 +11753,0 @@ export class Client extends GameShell {
+-                    // show keyboard when tapping in an input area
+@@ -11705 +11755,0 @@ export class Client extends GameShell {
+-                    // hide keyboard when tapping outside of an input area
+@@ -11710 +11759,0 @@ export class Client extends GameShell {
+-                // within click threshold: activate mouse button
+@@ -11724 +11772,0 @@ export class Client extends GameShell {
+-                // release after a client cycle has passed
+@@ -11737 +11784,0 @@ export class Client extends GameShell {
+-            // custom: touchscreen support
+@@ -11762 +11808,0 @@ export class Client extends GameShell {
+-            // custom: moving off-canvas may have a stuck mouse event
+@@ -11768 +11813,0 @@ export class Client extends GameShell {
+-            // custom: touchscreen support
+@@ -11771 +11815,0 @@ export class Client extends GameShell {
+-            // release all arrow keys
+@@ -11785 +11828,0 @@ export class Client extends GameShell {
+-            // custom: touchscreen support
+@@ -11794 +11836,0 @@ export class Client extends GameShell {
+-                // no-op
+@@ -11798 +11839,0 @@ export class Client extends GameShell {
+-                // moving camera
+@@ -11801 +11841,0 @@ export class Client extends GameShell {
+-                // emulate arrow keys:
+@@ -11803 +11842,0 @@ export class Client extends GameShell {
+-                    // right
+@@ -11807 +11845,0 @@ export class Client extends GameShell {
+-                    // left
+@@ -11813 +11850,0 @@ export class Client extends GameShell {
+-                    // down
+@@ -11817 +11853,0 @@ export class Client extends GameShell {
+-                    // up
+diff --git a/src/client/ClientBuild.ts b/src/client/ClientBuild.ts
+index ebf632c..60c3810 100644
+--- a/src/client/ClientBuild.ts
++++ b/src/client/ClientBuild.ts
+@@ -37,6 +37,6 @@ export default class ClientBuild {
+-    private readonly groundh: Int32Array[][]; // ground height
+-    private readonly mapl: Uint8Array[][]; // map land flags
+-    private readonly floort1: Uint8Array[][]; // floor type 1
+-    private readonly floort2: Uint8Array[][]; // floor type 2
+-    private readonly floors: Uint8Array[][]; // floor shape
+-    private readonly floorr: Uint8Array[][]; // floor rotation
++    private readonly groundh: Int32Array[][];
++    private readonly mapl: Uint8Array[][];
++    private readonly floort1: Uint8Array[][];
++    private readonly floort2: Uint8Array[][];
++    private readonly floors: Uint8Array[][];
++    private readonly floorr: Uint8Array[][];
+@@ -50 +50 @@ export default class ClientBuild {
+-    private readonly mapo: Int32Array[][]; // map occlusion
++    private readonly mapo: Int32Array[][];
+@@ -242 +241,0 @@ export default class ClientBuild {
+-                                    // occludes && flat
+@@ -342,3 +341,3 @@ export default class ClientBuild {
+-        let wall0: number = 0x1; // this flag is set by walls with rotation 0 or 2
+-        let wall1: number = 0x2; // this flag is set by walls with rotation 1 or 3
+-        let floor: number = 0x4; // this flag is set by floors which are flat
++        let wall0: number = 0x1;
++        let wall1: number = 0x2;
++        let floor: number = 0x4;
+@@ -786 +785 @@ export default class ClientBuild {
+-            typecode += -0x80000000; // int.min
++            typecode += -0x80000000;
+@@ -1182 +1181 @@ export default class ClientBuild {
+-            typecode += -0x80000000; // int.min
++            typecode += -0x80000000;
+diff --git a/src/client/ClientCode.ts b/src/client/ClientCode.ts
+index 6168133..c18f8a0 100644
+--- a/src/client/ClientCode.ts
++++ b/src/client/ClientCode.ts
+@@ -2 +1,0 @@ export const enum ClientCode {
+-    //// friends
+@@ -15 +13,0 @@ export const enum ClientCode {
+-    //// logout
+@@ -18 +15,0 @@ export const enum ClientCode {
+-    /// bank
+@@ -21 +17,0 @@ export const enum ClientCode {
+-    //// player design (300-327)
+@@ -51 +46,0 @@ export const enum ClientCode {
+-    //// ignores
+@@ -58 +52,0 @@ export const enum ClientCode {
+-    //// reportabuse
+@@ -74,2 +68 @@ export const enum ClientCode {
+-    //// welcome_screen/welcome_screen2
+-    CC_LAST_LOGIN_INFO = 650, // has recovery questions
++    CC_LAST_LOGIN_INFO = 650,
+@@ -80 +73 @@ export const enum ClientCode {
+-    CC_LAST_LOGIN_INFO2 = 655, // has no recovery questions
++    CC_LAST_LOGIN_INFO2 = 655,
+diff --git a/src/client/GameShell.ts b/src/client/GameShell.ts
+index ebf7090..7e13859 100644
+--- a/src/client/GameShell.ts
++++ b/src/client/GameShell.ts
+@@ -38 +37,0 @@ export default abstract class GameShell {
+-    /// custom
+@@ -57,0 +57,3 @@ export default abstract class GameShell {
++    protected async frameDelay(ms: number): Promise<void> {
++        await sleep(ms);
++    }
+@@ -112,2 +114,2 @@ export default abstract class GameShell {
+-        // Preventing mouse events from bubbling up to the context menu in the browser for our canvas.
+-        // This may need to be hooked up to our own context menu in the future.
++        // suppress the browser menu over the game canvas only — the rest of the
++        // page (e.g. the bot panel) stays right-clickable for inspect/devtools
+@@ -118,4 +119,0 @@ export default abstract class GameShell {
+-        window.oncontextmenu = (e: MouseEvent): void => {
+-            e.preventDefault();
+-        };
+-
+@@ -183 +181 @@ export default abstract class GameShell {
+-            await sleep(delta);
++            await this.frameDelay(delta);
+@@ -205 +202,0 @@ export default abstract class GameShell {
+-            // this is custom for targeting specific fps (on mobile).
+@@ -251 +247,0 @@ export default abstract class GameShell {
+-        window.oncontextmenu = null;
+@@ -286 +281,0 @@ export default abstract class GameShell {
+-        // draw full progress bar
+@@ -292 +286,0 @@ export default abstract class GameShell {
+-        // cover up progress bar
+@@ -296 +289,0 @@ export default abstract class GameShell {
+-        // draw text
+@@ -302 +295 @@ export default abstract class GameShell {
+-        await sleep(5); // return a slice of time to the main loop so it can update the progress bar
++        await sleep(5);
+@@ -305,2 +297,0 @@ export default abstract class GameShell {
+-    // ----
+-
+@@ -323 +313,0 @@ export default abstract class GameShell {
+-        // custom: down event comes before and potentially without move event
+@@ -359 +348,0 @@ export default abstract class GameShell {
+-        // custom: up event comes before and potentially without move event
+@@ -397 +385,0 @@ export default abstract class GameShell {
+-        // custom: moving off-canvas may have a stuck mouse event
+@@ -481,5 +468,0 @@ export default abstract class GameShell {
+-        // if (e.isTrusted && MobileKeyboard.isDisplayed()) {
+-        //     // physical keyboard started typing, hide virtual
+-        //     MobileKeyboard.hide();
+-        //     this.refresh();
+-        // }
+@@ -553 +535,0 @@ export default abstract class GameShell {
+-        // custom: taken from later version to release all keys
+@@ -559,2 +540,0 @@ export default abstract class GameShell {
+-    // ----
+-
+@@ -596,2 +575,0 @@ export default abstract class GameShell {
+-            // Fullscreen logic will ensure the canvas aspect ratio is
+-            // preserved, centering the canvas on the screen.
+@@ -601 +578,0 @@ export default abstract class GameShell {
+-            // Determine whether our aspect ratio is wider than canvas' one.
+@@ -610 +586,0 @@ export default abstract class GameShell {
+-                // Browser will scale canvas according to _height_.
+@@ -613 +588,0 @@ export default abstract class GameShell {
+-                // As such, there will be a gap on the X axis either side.
+@@ -616 +590,0 @@ export default abstract class GameShell {
+-                // Browser will scale canvas according to _width_.
+@@ -619 +592,0 @@ export default abstract class GameShell {
+-                // As such, there will be a gap on the Y axis either side.
+@@ -633,5 +605,0 @@ export default abstract class GameShell {
+-        // Specifically filter events outside of bounds of canvas; this can
+-        // happen if fullscreen mode is on due to letterboxing! The result is
+-        // that the mouse appears to move up/down vertically along X:0 if they
+-        // move mouse on the black section to the left, vice versa for other
+-        // sides, depending on aspect ratio.
+diff --git a/src/client/KeyCodes.ts b/src/client/KeyCodes.ts
+index 0314952..04c1e56 100644
+--- a/src/client/KeyCodes.ts
++++ b/src/client/KeyCodes.ts
+@@ -8 +7,0 @@ export const CanvasEnabledKeys: string[] = ['F11', 'F12'];
+-// could be an array, but mangling properties is a PITA
+diff --git a/src/client/MiniMenuAction.ts b/src/client/MiniMenuAction.ts
+index a5d9797..6840613 100644
+--- a/src/client/MiniMenuAction.ts
++++ b/src/client/MiniMenuAction.ts
+@@ -4 +4 @@ export const enum MiniMenuAction {
+-    TGT_LOC = 899, // cast spell on
++    TGT_LOC = 899,
+@@ -10 +10 @@ export const enum MiniMenuAction {
+-    USEHELD_ONLOC = 810, // use item on
++    USEHELD_ONLOC = 810,
+@@ -12 +12 @@ export const enum MiniMenuAction {
+-    TGT_NPC = 240, // cast spell on
++    TGT_NPC = 240,
+@@ -18 +18 @@ export const enum MiniMenuAction {
+-    USEHELD_ONNPC = 829, // use item on
++    USEHELD_ONNPC = 829,
+@@ -20 +20 @@ export const enum MiniMenuAction {
+-    TGT_OBJ = 370, // cast spell on
++    TGT_OBJ = 370,
+@@ -26 +26 @@ export const enum MiniMenuAction {
+-    USEHELD_ONOBJ = 111, // use item on
++    USEHELD_ONOBJ = 111,
+@@ -28 +28 @@ export const enum MiniMenuAction {
+-    TGT_PLAYER = 131, // cast spell on
++    TGT_PLAYER = 131,
+@@ -30 +30 @@ export const enum MiniMenuAction {
+-    ACCEPT_DUELREQ = 957, // opplayer1
++    ACCEPT_DUELREQ = 957,
+@@ -34 +34 @@ export const enum MiniMenuAction {
+-    ACCEPT_TRADEREQ = 507, // opplayer4
++    ACCEPT_TRADEREQ = 507,
+@@ -36 +36 @@ export const enum MiniMenuAction {
+-    USEHELD_ONPLAYER = 275, // use item on
++    USEHELD_ONPLAYER = 275,
+@@ -38 +38 @@ export const enum MiniMenuAction {
+-    TGT_HELD = 563, // cast spell on
++    TGT_HELD = 563,
+@@ -44 +44 @@ export const enum MiniMenuAction {
+-    USEHELD_ONHELD = 398, // use item on
++    USEHELD_ONHELD = 398,
+@@ -55 +55 @@ export const enum MiniMenuAction {
+-    TGT_BUTTON = 274, // select target for spell
++    TGT_BUTTON = 274,
+@@ -61 +61 @@ export const enum MiniMenuAction {
+-    USEHELD_START = 102, // select target for item
++    USEHELD_START = 102,
+@@ -63,4 +63,4 @@ export const enum MiniMenuAction {
+-    OP_LOC6 = 1381, // examine
+-    OP_NPC6 = 1714, // examine
+-    OP_OBJ6 = 1152, // examine
+-    OP_HELD6 = 1328, // examine
++    OP_LOC6 = 1381,
++    OP_NPC6 = 1714,
++    OP_OBJ6 = 1152,
++    OP_HELD6 = 1328,
+diff --git a/src/client/MobileKeyboard.ts b/src/client/MobileKeyboard.ts
+index 18c6978..f03128b 100644
+--- a/src/client/MobileKeyboard.ts
++++ b/src/client/MobileKeyboard.ts
+@@ -3,3 +2,0 @@ import { canvas, canvas2d } from '#/graphics/Canvas.js';
+-// ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!"£$%^&*()-_=+[{]};:\'@#~,<.>/?\\| 
+-// ^ Allowed characters in client
+-
+@@ -7,4 +4,4 @@ const KEYMAP_REGULAR = [
+-    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',  // 10 chars
+-    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',  // 9 chars
+-    'Shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'Del',  // 9 chars
+-    '123', ',', ' ', '.', 'Enter'  // 5 chars
++    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
++    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
++    'Shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'Del',
++    '123', ',', ' ', '.', 'Enter'
+@@ -14,4 +11,4 @@ const KEYMAP_SHIFT = [
+-    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P',  // 10 chars
+-    'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L',  // 9 chars
+-    'Shift', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', 'Del',  // 9 chars
+-    '123', ',', ' ', '.', 'Enter'  // 5 chars
++    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P',
++    'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L',
++    'Shift', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', 'Del',
++    '123', ',', ' ', '.', 'Enter'
+@@ -21,3 +18,3 @@ const KEYMAP_SYMBOLS = [
+-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',  // 10 chars
+-    '!', '"', '$', '%', '_', '&', '*', '(', ')',  // 9 chars
+-    '1/2', '@', '=', '<', '>', '~', ';', ':', 'Del',  // 9 chars
++    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
++    '!', '"', '$', '%', '_', '&', '*', '(', ')',
++    '1/2', '@', '=', '<', '>', '~', ';', ':', 'Del',
+@@ -34 +30,0 @@ const KEYMAP_SYMBOLS_EXTRA = [
+-// Offset for addressing individual rows; four rows total.
+@@ -37 +32,0 @@ const CHAR_OFFSET_PER_ROW = [0, 10, 19, 28];
+-// Width in pixels for each key.
+@@ -40 +34,0 @@ const WIDTH_PER_KEYBOX = 50;
+-// Height in pixels for each key.
+@@ -43 +36,0 @@ const HEIGHT_PER_KEYBOX = 30;
+-// Timeout in milliseconds between each drag event, before considering the drag to have ended.
+@@ -46 +38,0 @@ const DRAG_TIMEOUT_MS = 1000;
+-// How far a drag must move at least, before the keyboard starts moving.
+@@ -49 +40,0 @@ const DRAG_MIN_DIST_PX = 5;
+-// How far a drag can move at most in one touch event.
+@@ -82 +72,0 @@ interface Keyboard {
+-
+@@ -87 +76,0 @@ function isFullScreen() {
+-
+@@ -161,6 +149,0 @@ class MobileKeyboard {
+-
+-
+-
+-/**
+- * QWERTY-based OSK module.
+- */
+@@ -181,3 +163,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Returns a CSS style colour string for the given keyboard key index.
+-     */
+@@ -185 +164,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-        // If we are animating that key, mark it as a bit darker.
+@@ -193 +171,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // Special keys have more than one character, so shade darker.
+@@ -196 +173,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-        // Regular shade for regular keys.
+@@ -200,3 +176,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Returns the position of a key box for the given index.
+-     */
+@@ -216 +189,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-        // Space bar has more chars than normal.
+@@ -220 +192,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-        // Adjust chars after space bar to start further along.
+@@ -227,3 +198,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Returns the character assigned to the given keymap index.
+-     */
+@@ -240,4 +209 @@ class CanvasMobileKeyboard implements Keyboard {
+-    
+-    /**
+-     * Draw all keyboard key backgrounds to the 2D canvas context.
+-     */
++
+@@ -254,3 +219,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Draw all key 'chars' to the 2D canvas context.
+-     */
+@@ -274,3 +236,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Draw the keyboard main background to the 2D canvas context.
+-     */
+@@ -284,3 +243,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Draw the keyboard to the 2D canvas context.
+-     */
+@@ -298,3 +254,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Show the keyboard.
+-     */
+@@ -306,3 +259,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Hide the keyboard.
+-     */
+@@ -313,3 +263,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Returns whether the keyboard is displayed on-screen.
+-     */
+@@ -320,3 +267,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Determines whether given x and y are within the bounds of the keyboard.
+-     */
+@@ -329,4 +273,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Returns the box index for given x and y position.
+-     * Will return -1 on error.
+-     */
+@@ -337 +277,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // Out of bounds
+@@ -346 +285,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // second row is offset by half a key
+@@ -361,3 +299,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Returns the character for an x and y position on the keyboard.
+-     */
+@@ -367 +302,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // there is a key corresponding to the click
+@@ -370 +304,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-                // space takes 6 keyboxes
+@@ -387,5 +320,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Signal that a MouseDown event occurred at x and y.
+-     * If this returns true, the MouseDown event should be considered swallowed
+-     * by the keyboard.
+-     */
+@@ -394 +323 @@ class CanvasMobileKeyboard implements Keyboard {
+-            return true;  // handled by keyboard
++            return true;
+@@ -399,5 +327,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Signal that a MouseUp event occurred at x and y.
+-     * If this returns true, the MouseUp event should be considered swallowed
+-     * by the keyboard.
+-     */
+@@ -426 +349,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-                // Swallow here, something went wrong.
+@@ -429 +351,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // relay to canvas!
+@@ -453 +375 @@ class CanvasMobileKeyboard implements Keyboard {
+-            return true;  // handled by keyboard
++            return true;
+@@ -458,4 +379,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-    /**
+-     * Signal that a TouchMove event occurred at x and y.
+-     * This is used for the keyboard drag logic.
+-     */
+@@ -467 +384,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // Timeout since touch started
+@@ -472 +388,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // Record when and where the touch event started.
+@@ -479 +394,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-        // How far have we moved in this touch event?
+@@ -483 +397,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // Dragged further than the maximum distance in one touch event.
+@@ -487,3 +400,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // Dragged further than the minimum distance in one touch event.
+-            // Restrict movement such that the keyboard can't be repositioned out of sight
+-            // Otherwise, it's possible to make the keyboard unusable!
+@@ -494 +404,0 @@ class CanvasMobileKeyboard implements Keyboard {
+-            // Focus event forces a re-draw of canvas
+@@ -505 +414,0 @@ class NativeMobileKeyboard implements Keyboard {
+-        // android device detection
+@@ -507 +415,0 @@ class NativeMobileKeyboard implements Keyboard {
+-        // Create the virtual input field
+@@ -509 +417 @@ class NativeMobileKeyboard implements Keyboard {
+-        this.virtualInputElement.setAttribute('type', 'password'); // "text" fields use a different key press flow on android
++        this.virtualInputElement.setAttribute('type', 'password');
+@@ -517 +424,0 @@ class NativeMobileKeyboard implements Keyboard {
+-            // Android uses `input` event for text entry rathern than `keydown` / `keyup`
+@@ -548 +454,0 @@ class NativeMobileKeyboard implements Keyboard {
+-            // Non-android can use `keydown` / `keyup` directly
+@@ -559 +464,0 @@ class NativeMobileKeyboard implements Keyboard {
+-        // Native keyboard, nothing to draw
+@@ -562 +466,0 @@ class NativeMobileKeyboard implements Keyboard {
+-        // Focus and click the virtual input field
+@@ -573 +476,0 @@ class NativeMobileKeyboard implements Keyboard {
+-        // Blur the virtual input field
+@@ -582 +484,0 @@ class NativeMobileKeyboard implements Keyboard {
+-        // We don't capture mouse events as the keyboard is Native so doesn't bubble
+@@ -586 +487,0 @@ class NativeMobileKeyboard implements Keyboard {
+-        // We don't capture mouse events as the keyboard is Native so doesn't bubble
+@@ -590 +490,0 @@ class NativeMobileKeyboard implements Keyboard {
+-        // We don't capture touch movement as we don't move the native keyboard
+diff --git a/src/config/IfType.ts b/src/config/IfType.ts
+index b83beef..ce2a91e 100644
+--- a/src/config/IfType.ts
++++ b/src/config/IfType.ts
+@@ -20 +20 @@ export const enum ComponentType {
+-    TYPE_UNUSED = 1, // TODO
++    TYPE_UNUSED = 1,
+diff --git a/src/config/LocType.ts b/src/config/LocType.ts
+index 8c62f02..5888783 100644
+--- a/src/config/LocType.ts
++++ b/src/config/LocType.ts
+@@ -311 +310,0 @@ export default class LocType {
+-    // custom name
+diff --git a/src/config/ObjType.ts b/src/config/ObjType.ts
+index 0058779..c30d21b 100644
+--- a/src/config/ObjType.ts
++++ b/src/config/ObjType.ts
+@@ -442 +441,0 @@ export default class ObjType {
+-        // add outline
+@@ -462 +460,0 @@ export default class ObjType {
+-            // add outline
+@@ -481 +478,0 @@ export default class ObjType {
+-            // add shadow
+diff --git a/src/config/VarpType.ts b/src/config/VarpType.ts
+index 2e8f45b..8a9a8cf 100644
+--- a/src/config/VarpType.ts
++++ b/src/config/VarpType.ts
+@@ -41 +40,0 @@ export default class VarpType {
+-                // server-side
+@@ -43 +41,0 @@ export default class VarpType {
+-                // server-side
+@@ -47 +44,0 @@ export default class VarpType {
+-                // server-side
+@@ -51 +47,0 @@ export default class VarpType {
+-                // server-side
+@@ -55 +50,0 @@ export default class VarpType {
+-                // server-side
+diff --git a/src/config/loginKey.ts b/src/config/loginKey.ts
+new file mode 100644
+index 0000000..e91660c
+--- /dev/null
++++ b/src/config/loginKey.ts
+@@ -0,0 +1,59 @@
++// The login modulus is baked at build time, but rs2b2t rotates its RSA keypair
++// on restart. A stale modulus makes the server's rsadec produce garbage and it
++// replies with login response 6 — "RuneScape has been updated!" — so the client
++// re-fetches the live key and retries once. It reads the proxy's /loginkey where
++// one is running, and otherwise the client bundle the game server serves itself,
++// which is the only source a same-origin hosted client has.
++
++const BAKED_MODULUS = process.env.LOGIN_RSAN ?? '';
++const EXPONENT = process.env.LOGIN_RSAE ?? '65537';
++const CLIENT_BUNDLE = '/client/client.js';
++
++let modulus = BAKED_MODULUS;
++
++export function loginModulus(): bigint {
++    return BigInt(modulus);
++}
++
++export function loginExponent(): bigint {
++    return BigInt(EXPONENT);
++}
++
++export function parseLoginModulus(text: string): string | null {
++    const match = /^\d{250,}$/.exec(text.trim());
++    return match ? match[0] : null;
++}
++
++// parseLoginModulus is anchored and cannot read a minified bundle; loosening it
++// would let the plain-text endpoint accept noise, so the fallback gets its own.
++export function extractLoginModulus(text: string): string | null {
++    const match = /\d{250,}/.exec(text);
++    return match ? match[0] : null;
++}
++
++async function readModulus(url: string, extract: (text: string) => string | null): Promise<string | null> {
++    try {
++        const res = await fetch(url);
++        if (!res.ok) {
++            return null;
++        }
++
++        return extract(await res.text());
++    } catch (_e) {
++        return null;
++    }
++}
++
++export async function refreshLoginKey(): Promise<boolean> {
++    const next = (await readModulus('/loginkey', parseLoginModulus)) ?? (await readModulus(CLIENT_BUNDLE, extractLoginModulus));
++    if (!next || next === modulus) {
++        return false;
++    }
++
++    modulus = next;
++    return true;
++}
++
++export function resetLoginKey(): void {
++    modulus = BAKED_MODULUS;
++}
+diff --git a/src/config/target.ts b/src/config/target.ts
+new file mode 100644
+index 0000000..8b89b72
+--- /dev/null
++++ b/src/config/target.ts
+@@ -0,0 +1,20 @@
++export interface Target {
++    wsHost: string;
++    tls: boolean;
++}
++
++const LIVE_HOST = 'w1.rs2b2t.com';
++
++export function resolveTarget(name: string, locationHost = '', isHttps = false): Target {
++    if (name === 'live') {
++        return { wsHost: LIVE_HOST, tls: true };
++    }
++    return { wsHost: locationHost, tls: isHttps };
++}
++
++const TARGET_NAME = process.env.RS2B0T_TARGET ?? 'local';
++
++export const TARGET: Target =
++    typeof window !== 'undefined'
++        ? resolveTarget(TARGET_NAME, window.location.host, window.location.protocol === 'https:')
++        : resolveTarget(TARGET_NAME);
+diff --git a/src/dash3d/AnimFrame.ts b/src/dash3d/AnimFrame.ts
+index 4e7f5fd..ddea3f6 100644
+--- a/src/dash3d/AnimFrame.ts
++++ b/src/dash3d/AnimFrame.ts
+@@ -11,4 +11,4 @@ export default class AnimFrame {
+-    ti: Int32Array | null = null; // transform index
+-    tx: Int32Array | null = null; // transform x
+-    ty: Int32Array | null = null; // transform y
+-    tz: Int32Array | null = null; // transform z
++    ti: Int32Array | null = null;
++    tx: Int32Array | null = null;
++    ty: Int32Array | null = null;
++    tz: Int32Array | null = null;
+diff --git a/src/dash3d/ClientPlayer.ts b/src/dash3d/ClientPlayer.ts
+index 0dbefba..3e1d6e2 100644
+--- a/src/dash3d/ClientPlayer.ts
++++ b/src/dash3d/ClientPlayer.ts
+@@ -130 +130 @@ export default class ClientPlayer extends ClientEntity {
+-        [ // hair
++        [
+@@ -144 +144 @@ export default class ClientPlayer extends ClientEntity {
+-        [ // torso
++        [
+@@ -162 +162 @@ export default class ClientPlayer extends ClientEntity {
+-        [ // legs
++        [
+@@ -180 +180 @@ export default class ClientPlayer extends ClientEntity {
+-        [ // feet
++        [
+@@ -188 +188 @@ export default class ClientPlayer extends ClientEntity {
+-        [ // skin
++        [
+diff --git a/src/dash3d/CollisionFlag.ts b/src/dash3d/CollisionFlag.ts
+index bc33369..ead30b8 100644
+--- a/src/dash3d/CollisionFlag.ts
++++ b/src/dash3d/CollisionFlag.ts
+@@ -12 +12 @@ export const enum CollisionFlag {
+-    WALK_BLOCK_FLAGS = 0xFF, // W_NW | W_N | W_NE | W_E | W_SE | W_S | W_SW | W_W
++    WALK_BLOCK_FLAGS = 0xFF,
+@@ -23 +23 @@ export const enum CollisionFlag {
+-    VIS_BLOCK_FLAGS = 0x1FE00, // V_NW | V_N | V_NE | V_E | V_SE | V_S | V_SW | V_W
++    VIS_BLOCK_FLAGS = 0x1FE00,
+@@ -31,11 +31,9 @@ export const enum CollisionFlag {
+-    SQ_BLOCKED = 0x280100, // WR_GRND | BLOCK_NPCS_AND_PLAYERS | WALK_SCENERY
+-    // SQ_BLOCKED in 308 is 0x1280100: UNLOADED | WR_GRND | BLOCK_NPCS_AND_PLAYERS | WALK_SCENERY
+-    // SQ_BLOCKED in 468 is 0x12C0100: UNLOADED | WR_GRND | BLOCK_NPCS_AND_PLAYERS | WR_GROUND_DECOR | WALK_SCENERY
+-    PL_WALK_N = 0x280102, // SQ_BLOCKED | W_N
+-    PL_WALK_E = 0x280108, // SQ_BLOCKED | W_E
+-    PL_WALK_NE = 0x28010E, // SQ_BLOCKED | W_NE | W_N | W_E
+-    PL_WALK_S = 0x280120, // SQ_BLOCKED | W_S
+-    PL_WALK_SE = 0x280138, // SQ_BLOCKED | W_SE | W_S | W_E
+-    PL_WALK_W = 0x280180, // SQ_BLOCKED | W_W
+-    PL_WALK_NW = 0x280183, // SQ_BLOCKED | W_NW | W_N | W_W
+-    PL_WALK_SW = 0x2801E0, // SQ_BLOCKED | W_SW | W_S | W_W
++    SQ_BLOCKED = 0x280100,
++    PL_WALK_N = 0x280102,
++    PL_WALK_E = 0x280108,
++    PL_WALK_NE = 0x28010E,
++    PL_WALK_S = 0x280120,
++    PL_WALK_SE = 0x280138,
++    PL_WALK_W = 0x280180,
++    PL_WALK_NW = 0x280183,
++    PL_WALK_SW = 0x2801E0,
+diff --git a/src/dash3d/CollisionMap.ts b/src/dash3d/CollisionMap.ts
+index e00f70f..2a20adf 100644
+--- a/src/dash3d/CollisionMap.ts
++++ b/src/dash3d/CollisionMap.ts
+@@ -6 +5,0 @@ import { LocShape } from '#/dash3d/LocShape.js';
+-// a standard build area is 4x13x13 zones, or 4x104x104 tiles
+@@ -59 +57,0 @@ export default class CollisionMap {
+-            // north or south
+diff --git a/src/dash3d/Ground.ts b/src/dash3d/Ground.ts
+index f80d583..1c59cf4 100644
+--- a/src/dash3d/Ground.ts
++++ b/src/dash3d/Ground.ts
+@@ -16 +16 @@ const defShapeP: Int8Array[] = [
+-]; // shape points
++];
+@@ -33 +33 @@ const defShapeF: Int8Array[] = [
+-]; // shape faces
++];
+@@ -47,2 +46,0 @@ export default class Ground {
+-    // ----
+-
+diff --git a/src/dash3d/Model.ts b/src/dash3d/Model.ts
+index 583af99..ff0ab37 100644
+--- a/src/dash3d/Model.ts
++++ b/src/dash3d/Model.ts
+@@ -42,2 +41,0 @@ export default class Model extends ModelSource {
+-    // unlit model
+-
+@@ -83,2 +80,0 @@ export default class Model extends ModelSource {
+-    // lit model
+-
+@@ -120,3 +116,3 @@ export default class Model extends ModelSource {
+-    static oX: number = 0; // animation origin x
+-    static oY: number = 0; // animation origin y
+-    static oZ: number = 0; // animation origin z
++    static oX: number = 0;
++    static oY: number = 0;
++    static oZ: number = 0;
+@@ -129,0 +126,24 @@ export default class Model extends ModelSource {
++    static trackTypecode: number = 0;
++    static frameStamp: number = 0;
++    static trackStamp: number = -1;
++    static trackMinX: number = 0;
++    static trackMaxX: number = 0;
++    static trackMinY: number = 0;
++    static trackMaxY: number = 0;
++
++    private static trackExtend(x: number, y: number): void {
++        if (Model.trackStamp !== Model.frameStamp) {
++            Model.trackStamp = Model.frameStamp;
++            Model.trackMinX = x;
++            Model.trackMaxX = x;
++            Model.trackMinY = y;
++            Model.trackMaxY = y;
++            return;
++        }
++
++        if (x < Model.trackMinX) Model.trackMinX = x;
++        if (x > Model.trackMaxX) Model.trackMaxX = x;
++        if (y < Model.trackMinY) Model.trackMinY = y;
++        if (y > Model.trackMaxY) Model.trackMaxY = y;
++    }
++
+@@ -382 +401,0 @@ export default class Model extends ModelSource {
+-                // a = a;
+@@ -388 +406,0 @@ export default class Model extends ModelSource {
+-                // b = b;
+@@ -1532 +1549,0 @@ export default class Model extends ModelSource {
+-                // face normal
+@@ -1629 +1645,0 @@ export default class Model extends ModelSource {
+-            // getTexLight
+@@ -1638 +1653,0 @@ export default class Model extends ModelSource {
+-            // getColour
+@@ -1710 +1724,0 @@ export default class Model extends ModelSource {
+-            // try catch for example a model being drawn from 3d can crash like at baxtorian falls
+@@ -1713 +1726,0 @@ export default class Model extends ModelSource {
+-            // empty
+@@ -1828,0 +1842,3 @@ export default class Model extends ModelSource {
++                if (typecode !== 0 && typecode === Model.trackTypecode) {
++                    Model.trackExtend(Model.vertexScreenX[v], Model.vertexScreenY[v]);
++                }
+@@ -1842 +1857,0 @@ export default class Model extends ModelSource {
+-            // try catch for example a model being drawn from 3d can crash like at baxtorian falls
+@@ -1845 +1859,0 @@ export default class Model extends ModelSource {
+-            // empty
+@@ -1915 +1928,0 @@ export default class Model extends ModelSource {
+-                        // chrome's V8 optimizer hates us
+@@ -2004 +2016,0 @@ export default class Model extends ModelSource {
+-                    // chrome's V8 optimizer hates us
+@@ -2025 +2036,0 @@ export default class Model extends ModelSource {
+-                    // chrome's V8 optimizer hates us
+@@ -2046 +2056,0 @@ export default class Model extends ModelSource {
+-                    // chrome's V8 optimizer hates us
+@@ -2057 +2066,0 @@ export default class Model extends ModelSource {
+-                    // chrome's V8 optimizer hates us
+@@ -2079 +2087,0 @@ export default class Model extends ModelSource {
+-                // chrome's V8 optimizer hates us
+diff --git a/src/dash3d/Pix3D.ts b/src/dash3d/Pix3D.ts
+index 33f4e59..406fbeb 100644
+--- a/src/dash3d/Pix3D.ts
++++ b/src/dash3d/Pix3D.ts
+@@ -45,2 +44,0 @@ export default class Pix3D extends Pix2D {
+-            // angular frequency: 2 * pi / 2048 = 0.0030679615757712823
+-            // * 65536 = maximum amplitude
+@@ -106 +103,0 @@ export default class Pix3D extends Pix2D {
+-                // empty
+diff --git a/src/dash3d/Sprite.ts b/src/dash3d/Sprite.ts
+index 3c849f3..ee034c9 100644
+--- a/src/dash3d/Sprite.ts
++++ b/src/dash3d/Sprite.ts
+@@ -3,2 +2,0 @@ import type ModelSource from '#/dash3d/ModelSource.js';
+-// Sprites are an abstract entity - a model to be rendered.
+-// It can be a Loc, Player, NPC, or another renderable class
+diff --git a/src/dash3d/World.ts b/src/dash3d/World.ts
+index 64fb1d8..91ed4f4 100644
+--- a/src/dash3d/World.ts
++++ b/src/dash3d/World.ts
+@@ -41,12 +41,12 @@ const MINIMAP_SHAPE = [
+-    Uint8Array.of(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), // PLAIN_SHAPE
+-    Uint8Array.of(1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1), // DIAGONAL_SHAPE
+-    Uint8Array.of(1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0), // LEFT_SEMI_DIAGONAL_SMALL_SHAPE
+-    Uint8Array.of(0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1), // RIGHT_SEMI_DIAGONAL_SMALL_SHAPE
+-    Uint8Array.of(0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), // LEFT_SEMI_DIAGONAL_BIG_SHAPE
+-    Uint8Array.of(1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1), // RIGHT_SEMI_DIAGONAL_BIG_SHAPE
+-    Uint8Array.of(1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0), // HALF_SQUARE_SHAPE
+-    Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0), // CORNER_SMALL_SHAPE
+-    Uint8Array.of(1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1), // CORNER_BIG_SHAPE
+-    Uint8Array.of(1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0), // FAN_SMALL_SHAPE
+-    Uint8Array.of(0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1), // FAN_BIG_SHAPE
+-    Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1)  // TRAPEZIUM_SHAPE
++    Uint8Array.of(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
++    Uint8Array.of(1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1),
++    Uint8Array.of(1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0),
++    Uint8Array.of(0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1),
++    Uint8Array.of(0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
++    Uint8Array.of(1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1),
++    Uint8Array.of(1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0),
++    Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0),
++    Uint8Array.of(1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1),
++    Uint8Array.of(1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0),
++    Uint8Array.of(0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1),
++    Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1)
+@@ -66 +66 @@ const TEXTURE_AVERAGE = Uint16Array.of(
+-    39248, // water
++    39248,
+@@ -68 +68 @@ const TEXTURE_AVERAGE = Uint16Array.of(
+-    4643, // planks
++    4643,
+@@ -70 +70 @@ const TEXTURE_AVERAGE = Uint16Array.of(
+-    43086, // marble
++    43086,
+@@ -72 +72 @@ const TEXTURE_AVERAGE = Uint16Array.of(
+-    8602, // mossybricks
++    8602,
+@@ -74 +74 @@ const TEXTURE_AVERAGE = Uint16Array.of(
+-    28992, // gungywater
++    28992,
+@@ -76 +76 @@ const TEXTURE_AVERAGE = Uint16Array.of(
+-    5056, // lava
++    5056,
+@@ -78 +78 @@ const TEXTURE_AVERAGE = Uint16Array.of(
+-    3131, // pebblefloor
++    3131,
+@@ -547,0 +548,4 @@ export default class World {
++        return this.sceneSprite(level, x, z)?.typecode ?? 0;
++    }
++
++    sceneSprite(level: number, x: number, z: number): Sprite | null {
+@@ -550 +554 @@ export default class World {
+-            return 0;
++            return null;
+@@ -556 +560 @@ export default class World {
+-                return sprite.typecode;
++                return sprite;
+@@ -560 +564 @@ export default class World {
+-        return 0;
++        return null;
+diff --git a/src/datastruct/JString.ts b/src/datastruct/JString.ts
+index dbbe046..75138b1 100644
+--- a/src/datastruct/JString.ts
++++ b/src/datastruct/JString.ts
+@@ -18 +17,0 @@ export default class JString {
+-                // A-Z
+@@ -21 +19,0 @@ export default class JString {
+-                // a-z
+@@ -24 +21,0 @@ export default class JString {
+-                // 0-9
+@@ -37 +33,0 @@ export default class JString {
+-        // >= 37 to the 12th power
+diff --git a/src/graphics/Jpeg.ts b/src/graphics/Jpeg.ts
+index d1649a4..3d527ea 100644
+--- a/src/graphics/Jpeg.ts
++++ b/src/graphics/Jpeg.ts
+@@ -9 +8,0 @@ export async function decodeJpeg(data: Uint8Array): Promise<ImageData> {
+-        // fix invalid JPEG header
+@@ -13 +12 @@ export async function decodeJpeg(data: Uint8Array): Promise<ImageData> {
+-    URL.revokeObjectURL(jpegImg.src); // Remove previous decoded jpeg.
++    URL.revokeObjectURL(jpegImg.src);
+@@ -16 +14,0 @@ export async function decodeJpeg(data: Uint8Array): Promise<ImageData> {
+-    // wait for img to load
+@@ -19 +16,0 @@ export async function decodeJpeg(data: Uint8Array): Promise<ImageData> {
+-    // Clear the canvas before drawing
+@@ -27 +23,0 @@ export async function decodeJpeg(data: Uint8Array): Promise<ImageData> {
+-    // Draw the image
+diff --git a/src/graphics/Pix2D.ts b/src/graphics/Pix2D.ts
+index cb5f77b..814b4bf 100644
+--- a/src/graphics/Pix2D.ts
++++ b/src/graphics/Pix2D.ts
+@@ -249,2 +248,0 @@ export default class Pix2D extends Linkable2 {
+-    // mapview applet:
+-
+diff --git a/src/graphics/Pix32.ts b/src/graphics/Pix32.ts
+index 52659d5..2b20a77 100644
+--- a/src/graphics/Pix32.ts
++++ b/src/graphics/Pix32.ts
+@@ -10,6 +10,6 @@ export default class Pix32 extends Pix2D {
+-    wi: number; // width
+-    hi: number; // height
+-    xof: number; // x offset
+-    yof: number; // y offset
+-    owi: number; // original width
+-    ohi: number; // original height
++    wi: number;
++    hi: number;
++    xof: number;
++    yof: number;
++    owi: number;
++    ohi: number;
+@@ -461 +460,0 @@ export default class Pix32 extends Pix2D {
+-            // empty
+@@ -506 +504,0 @@ export default class Pix32 extends Pix2D {
+-            // empty
+diff --git a/src/graphics/Pix8.ts b/src/graphics/Pix8.ts
+index 94c3ce4..3e2c34f 100644
+--- a/src/graphics/Pix8.ts
++++ b/src/graphics/Pix8.ts
+@@ -8,7 +8,7 @@ export default class Pix8 extends Pix2D {
+-    readonly bpal: Int32Array; // base palette
+-    wi: number; // width
+-    hi: number; // height
+-    xof: number; // x offset
+-    yof: number; // y offset
+-    owi: number; // original width
+-    ohi: number; // original height
++    readonly bpal: Int32Array;
++    wi: number;
++    hi: number;
++    xof: number;
++    yof: number;
++    owi: number;
++    ohi: number;
+@@ -283,2 +282,0 @@ export default class Pix8 extends Pix2D {
+-    // mapview applet:
+-
+diff --git a/src/graphics/PixFont.ts b/src/graphics/PixFont.ts
+index 8bba74c..25237ee 100644
+--- a/src/graphics/PixFont.ts
++++ b/src/graphics/PixFont.ts
+@@ -88 +87,0 @@ export default class PixFont extends Linkable2 {
+-            // ' '  = 'I'
+@@ -91 +89,0 @@ export default class PixFont extends Linkable2 {
+-            // ' ' = 'i'
+diff --git a/src/io/ClientProt.ts b/src/io/ClientProt.ts
+index b7b11e0..17242f1 100644
+--- a/src/io/ClientProt.ts
++++ b/src/io/ClientProt.ts
+@@ -2 +2 @@ export const enum ClientProt {
+-    NO_TIMEOUT = 120, // index: 6 - NXT naming
++    NO_TIMEOUT = 120,
+@@ -4,5 +4,5 @@ export const enum ClientProt {
+-    IDLE_TIMER = 209, // index: 30
+-    EVENT_MOUSE_CLICK = 20, // index: 31
+-    EVENT_MOUSE_MOVE = 222, // index: 32
+-    EVENT_APPLET_FOCUS = 73, // index: 33
+-    EVENT_CAMERA_POSITION = 53, // index: 35
++    IDLE_TIMER = 209,
++    EVENT_MOUSE_CLICK = 20,
++    EVENT_MOUSE_MOVE = 222,
++    EVENT_APPLET_FOCUS = 73,
++    EVENT_CAMERA_POSITION = 53,
+@@ -10,9 +10,9 @@ export const enum ClientProt {
+-    ANTICHEAT_OPLOGIC1 = 219, // index: 60
+-    ANTICHEAT_OPLOGIC2 = 201, // index: 61
+-    ANTICHEAT_OPLOGIC3 = 41, // index: 62
+-    ANTICHEAT_OPLOGIC4 = 80, // index: 63
+-    ANTICHEAT_OPLOGIC5 = 235, // index: 64
+-    ANTICHEAT_OPLOGIC6 = 250, // index: 65
+-    ANTICHEAT_OPLOGIC7 = 25, // index: 66
+-    ANTICHEAT_OPLOGIC8 = 0, // index: 67
+-    ANTICHEAT_OPLOGIC9 = 24, // index: 68
++    ANTICHEAT_OPLOGIC1 = 219,
++    ANTICHEAT_OPLOGIC2 = 201,
++    ANTICHEAT_OPLOGIC3 = 41,
++    ANTICHEAT_OPLOGIC4 = 80,
++    ANTICHEAT_OPLOGIC5 = 235,
++    ANTICHEAT_OPLOGIC6 = 250,
++    ANTICHEAT_OPLOGIC7 = 25,
++    ANTICHEAT_OPLOGIC8 = 0,
++    ANTICHEAT_OPLOGIC9 = 24,
+@@ -20,7 +20,7 @@ export const enum ClientProt {
+-    ANTICHEAT_CYCLELOGIC1 = 12, // index: 70
+-    ANTICHEAT_CYCLELOGIC2 = 149, // index: 71
+-    ANTICHEAT_CYCLELOGIC3 = 52, // index: 72
+-    ANTICHEAT_CYCLELOGIC4 = 230, // index: 73
+-    ANTICHEAT_CYCLELOGIC5 = 100, // index: 74
+-    ANTICHEAT_CYCLELOGIC6 = 188, // index: 75
+-    ANTICHEAT_CYCLELOGIC7 = 89, // index: 76
++    ANTICHEAT_CYCLELOGIC1 = 12,
++    ANTICHEAT_CYCLELOGIC2 = 149,
++    ANTICHEAT_CYCLELOGIC3 = 52,
++    ANTICHEAT_CYCLELOGIC4 = 230,
++    ANTICHEAT_CYCLELOGIC5 = 100,
++    ANTICHEAT_CYCLELOGIC6 = 188,
++    ANTICHEAT_CYCLELOGIC7 = 89,
+@@ -28,7 +28,7 @@ export const enum ClientProt {
+-    OPOBJ1 = 247, // index: 80 - NXT naming
+-    OPOBJ2 = 169, // index: 81 - NXT naming
+-    OPOBJ3 = 108, // index: 82 - NXT naming
+-    OPOBJ4 = 62, // index: 83 - NXT naming
+-    OPOBJ5 = 117, // index: 84 - NXT naming
+-    OPOBJT = 91, // index: 88 - NXT naming
+-    OPOBJU = 39, // index: 89 - NXT naming
++    OPOBJ1 = 247,
++    OPOBJ2 = 169,
++    OPOBJ3 = 108,
++    OPOBJ4 = 62,
++    OPOBJ5 = 117,
++    OPOBJT = 91,
++    OPOBJU = 39,
+@@ -36,7 +36,7 @@ export const enum ClientProt {
+-    OPNPC1 = 236, // index: 100 - NXT naming
+-    OPNPC2 = 233, // index: 101 - NXT naming
+-    OPNPC3 = 223, // index: 102 - NXT naming
+-    OPNPC4 = 147, // index: 103 - NXT naming
+-    OPNPC5 = 189, // index: 104 - NXT naming
+-    OPNPCT = 181, // index: 108 - NXT naming
+-    OPNPCU = 150, // index: 109 - NXT naming
++    OPNPC1 = 236,
++    OPNPC2 = 233,
++    OPNPC3 = 223,
++    OPNPC4 = 147,
++    OPNPC5 = 189,
++    OPNPCT = 181,
++    OPNPCU = 150,
+@@ -44,7 +44,7 @@ export const enum ClientProt {
+-    OPLOC1 = 215, // index: 120 - NXT naming
+-    OPLOC2 = 103, // index: 121 - NXT naming
+-    OPLOC3 = 187, // index: 122 - NXT naming
+-    OPLOC4 = 157, // index: 123 - NXT naming
+-    OPLOC5 = 127, // index: 124 - NXT naming
+-    OPLOCT = 213, // index: 128 - NXT naming
+-    OPLOCU = 60, // index: 129 - NXT naming
++    OPLOC1 = 215,
++    OPLOC2 = 103,
++    OPLOC3 = 187,
++    OPLOC4 = 157,
++    OPLOC5 = 127,
++    OPLOCT = 213,
++    OPLOCU = 60,
+@@ -52,7 +52,7 @@ export const enum ClientProt {
+-    OPPLAYER1 = 109, // index: 140 - NXT naming
+-    OPPLAYER2 = 166, // index: 141 - NXT naming
+-    OPPLAYER3 = 196, // index: 142 - NXT naming
+-    OPPLAYER4 = 98, // index: 143 - NXT naming
+-    OPPLAYER5 = 174, // index: 144 - NXT naming
+-    OPPLAYERT = 240, // index: 148 - NXT naming
+-    OPPLAYERU = 36, // index: 149 - NXT naming
++    OPPLAYER1 = 109,
++    OPPLAYER2 = 166,
++    OPPLAYER3 = 196,
++    OPPLAYER4 = 98,
++    OPPLAYER5 = 174,
++    OPPLAYERT = 240,
++    OPPLAYERU = 36,
+@@ -60,7 +60,7 @@ export const enum ClientProt {
+-    OPHELD1 = 185, // index: 160 - name based on runescript trigger
+-    OPHELD2 = 2, // index: 161 - name based on runescript trigger
+-    OPHELD3 = 123, // index: 162 - name based on runescript trigger
+-    OPHELD4 = 216, // index: 163 - name based on runescript trigger
+-    OPHELD5 = 42, // index: 164 - name based on runescript trigger
+-    OPHELDT = 135, // index: 168 - name based on runescript trigger
+-    OPHELDU = 136, // index: 169 - name based on runescript trigger
++    OPHELD1 = 185,
++    OPHELD2 = 2,
++    OPHELD3 = 123,
++    OPHELD4 = 216,
++    OPHELD5 = 42,
++    OPHELDT = 135,
++    OPHELDU = 136,
+@@ -68,5 +68,5 @@ export const enum ClientProt {
+-    INV_BUTTON1 = 74, // index: 190 - NXT has "IF_BUTTON1" but for our interface system, this makes more sense
+-    INV_BUTTON2 = 82, // index: 191 - NXT has "IF_BUTTON2" but for our interface system, this makes more sense
+-    INV_BUTTON3 = 239, // index: 192 - NXT has "IF_BUTTON3" but for our interface system, this makes more sense
+-    INV_BUTTON4 = 179, // index: 193 - NXT has "IF_BUTTON4" but for our interface system, this makes more sense
+-    INV_BUTTON5 = 46, // index: 194 - NXT has "IF_BUTTON5" but for our interface system, this makes more sense
++    INV_BUTTON1 = 74,
++    INV_BUTTON2 = 82,
++    INV_BUTTON3 = 239,
++    INV_BUTTON4 = 179,
++    INV_BUTTON5 = 46,
+@@ -74,5 +74,5 @@ export const enum ClientProt {
+-    IF_BUTTON = 9, // index: 200 - NXT naming
+-    RESUME_PAUSEBUTTON = 72, // index: 201 - NXT naming
+-    CLOSE_MODAL = 51, // index: 202 - NXT naming
+-    RESUME_P_COUNTDIALOG = 102, // index: 203 - NXT naming
+-    TUT_CLICKSIDE = 94, // index: 204
++    IF_BUTTON = 9,
++    RESUME_PAUSEBUTTON = 72,
++    CLOSE_MODAL = 51,
++    RESUME_P_COUNTDIALOG = 102,
++    TUT_CLICKSIDE = 94,
+@@ -80,15 +80,15 @@ export const enum ClientProt {
+-    MAP_BUILD_COMPLETE = 214, // index: 241 - NXT naming
+-    MOVE_OPCLICK = 138, // index: 242 - comes with OP packets, name based on other MOVE packets
+-    SEND_SNAPSHOT = 137, // index: 243 - NXT naming
+-    MOVE_MINIMAPCLICK = 86, // index: 244 - NXT naming
+-    INV_BUTTOND = 93, // index: 245 - NXT has "IF_BUTTOND" but for our interface system, this makes more sense
+-    IGNORELIST_DEL = 101, // index: 246 - NXT naming
+-    IGNORELIST_ADD = 255, // index: 247 - NXT naming
+-    IDK_SAVEDESIGN = 125, // index: 248 - based on function name
+-    CHAT_SETMODE = 154, // index: 249 - NXT naming
+-    MESSAGE_PRIVATE = 139, // index: 250 - NXT naming
+-    FRIENDLIST_DEL = 106, // index: 251 - NXT naming
+-    FRIENDLIST_ADD = 13, // index: 252 - NXT naming
+-    CLIENT_CHEAT = 224, // index: 253 - NXT naming
+-    MESSAGE_PUBLIC = 253, // index: 254 - NXT naming
+-    MOVE_GAMECLICK = 207, // index: 255 - NXT naming
++    MAP_BUILD_COMPLETE = 214,
++    MOVE_OPCLICK = 138,
++    SEND_SNAPSHOT = 137,
++    MOVE_MINIMAPCLICK = 86,
++    INV_BUTTOND = 93,
++    IGNORELIST_DEL = 101,
++    IGNORELIST_ADD = 255,
++    IDK_SAVEDESIGN = 125,
++    CHAT_SETMODE = 154,
++    MESSAGE_PRIVATE = 139,
++    FRIENDLIST_DEL = 106,
++    FRIENDLIST_ADD = 13,
++    CLIENT_CHEAT = 224,
++    MESSAGE_PUBLIC = 253,
++    MOVE_GAMECLICK = 207,
+diff --git a/src/io/ClientStream.ts b/src/io/ClientStream.ts
+index fe24c99..5973058 100644
+--- a/src/io/ClientStream.ts
++++ b/src/io/ClientStream.ts
+@@ -0,0 +1,2 @@
++import { trafficMeter } from './TrafficMeter.js';
++
+@@ -40 +41,0 @@ export default class ClientStream {
+-    // note: Java throws IOException on failure
+@@ -49 +49,0 @@ export default class ClientStream {
+-    // note: Java throws IOException on failure
+@@ -58 +57,0 @@ export default class ClientStream {
+-    // note: Java throws IOException on failure
+@@ -70 +68,0 @@ export default class ClientStream {
+-    // note: Java throws IOException on failure
+@@ -143,0 +142 @@ class WebSocketWriter {
++            trafficMeter.addSent(len);
+@@ -219,0 +219 @@ class WebSocketReader {
++        trafficMeter.addReceived(event.len);
+diff --git a/src/io/Database.ts b/src/io/Database.ts
+index a5fd349..73eeaeb 100644
+--- a/src/io/Database.ts
++++ b/src/io/Database.ts
+@@ -41 +40,0 @@ export default class Database {
+-                    // IDB will call onsuccess with "undefined" if key does not exist
+@@ -62 +60,0 @@ export default class Database {
+-                    // IDB will call onsuccess with "undefined" if key does not exist
+@@ -88 +85,0 @@ export default class Database {
+-                // not too worried if it doesn't save, it'll redownload later
+@@ -109 +105,0 @@ export default class Database {
+-                // not too worried if it doesn't save, it'll redownload later
+diff --git a/src/io/JagFile.ts b/src/io/JagFile.ts
+index 356f5a2..e65e94a 100644
+--- a/src/io/JagFile.ts
++++ b/src/io/JagFile.ts
+@@ -9 +9 @@ export default class JagFile {
+-            hash = (hash * 61 + name.charCodeAt(i) - 32) | 0; // wtf?
++            hash = (hash * 61 + name.charCodeAt(i) - 32) | 0;
+diff --git a/src/io/Packet.ts b/src/io/Packet.ts
+index b971770..3966582 100644
+--- a/src/io/Packet.ts
++++ b/src/io/Packet.ts
+@@ -132 +131,0 @@ export default class Packet extends Linkable2 {
+-    // signed
+@@ -143 +141,0 @@ export default class Packet extends Linkable2 {
+-    // signed
+diff --git a/src/io/ServerProt.ts b/src/io/ServerProt.ts
+index 4e6cdf3..9c3570d 100644
+--- a/src/io/ServerProt.ts
++++ b/src/io/ServerProt.ts
+@@ -2 +1,0 @@ export const enum ServerProt {
+-    // interfaces
+@@ -12 +10,0 @@ export const enum ServerProt {
+-    // updating interfaces
+@@ -24 +21,0 @@ export const enum ServerProt {
+-    // tutorial area
+@@ -28 +24,0 @@ export const enum ServerProt {
+-    // inventory
+@@ -33 +28,0 @@ export const enum ServerProt {
+-    // camera control
+@@ -39 +33,0 @@ export const enum ServerProt {
+-    // entity updates
+@@ -43 +36,0 @@ export const enum ServerProt {
+-    // social
+@@ -51 +43,0 @@ export const enum ServerProt {
+-    // misc
+@@ -67 +58,0 @@ export const enum ServerProt {
+-    // maps
+@@ -70 +60,0 @@ export const enum ServerProt {
+-    // vars
+@@ -75 +64,0 @@ export const enum ServerProt {
+-    // audio
+@@ -80 +68,0 @@ export const enum ServerProt {
+-    // zones
+@@ -85 +72,0 @@ export const enum ServerProt {
+-    // zone protocol
+diff --git a/src/io/TrafficMeter.ts b/src/io/TrafficMeter.ts
+new file mode 100644
+index 0000000..a1ce8a3
+--- /dev/null
++++ b/src/io/TrafficMeter.ts
+@@ -0,0 +1,132 @@
++export interface TrafficTotals {
++    receivedBytes: number;
++    sentBytes: number;
++}
++
++export type TrafficMessage =
++    | ({ type: 'rs2b0t:traffic'; status: 'available' } & TrafficTotals)
++    | { type: 'rs2b0t:traffic'; status: 'unavailable'; reason: string };
++
++type ChannelFactory = () => BroadcastChannel | null;
++type TimerHandle = ReturnType<typeof setTimeout>;
++
++export interface TrafficMeterOptions {
++    channelFactory?: ChannelFactory;
++    intervalMs?: number;
++    setTimeout?: (callback: () => void, delayMs: number) => TimerHandle;
++    clearTimeout?: (timer: TimerHandle) => void;
++}
++
++const CHANNEL_NAME = 'rs2b0t:traffic:v1';
++const PUBLISH_INTERVAL_MS = 1000;
++
++function defaultChannelFactory(): BroadcastChannel | null {
++    return typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(CHANNEL_NAME);
++}
++
++function validBytes(bytes: number): boolean {
++    return Number.isSafeInteger(bytes) && bytes >= 0;
++}
++
++/** Publishes actual WebSocket payload deltas from one browser or worker realm. */
++export class TrafficMeter {
++    private readonly channel: BroadcastChannel | null;
++    private readonly intervalMs: number;
++    private readonly scheduleTimeout: (callback: () => void, delayMs: number) => TimerHandle;
++    private readonly cancelTimeout: (timer: TimerHandle) => void;
++    private receivedBytes = 0;
++    private sentBytes = 0;
++    private timer: TimerHandle | null = null;
++    private unavailableReason: string | null = null;
++    private closed = false;
++
++    constructor(options: TrafficMeterOptions = {}) {
++        this.intervalMs = options.intervalMs ?? PUBLISH_INTERVAL_MS;
++        if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0) {
++            throw new RangeError('traffic publish interval must be positive');
++        }
++        this.scheduleTimeout = options.setTimeout ?? ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
++        this.cancelTimeout = options.clearTimeout ?? (timer => globalThis.clearTimeout(timer));
++
++        try {
++            this.channel = (options.channelFactory ?? defaultChannelFactory)();
++        } catch {
++            this.channel = null;
++        }
++        this.scheduleHeartbeat();
++    }
++
++    addReceived(bytes: number): void {
++        this.addBytes('received', bytes);
++    }
++
++    addSent(bytes: number): void {
++        this.addBytes('sent', bytes);
++    }
++
++    publish(): void {
++        if (this.closed || !this.channel) {
++            return;
++        }
++        const message: TrafficMessage = this.unavailableReason === null
++            ? {
++                type: 'rs2b0t:traffic',
++                status: 'available',
++                receivedBytes: this.receivedBytes,
++                sentBytes: this.sentBytes
++            }
++            : { type: 'rs2b0t:traffic', status: 'unavailable', reason: this.unavailableReason };
++        try {
++            this.channel.postMessage(message);
++            if (message.status === 'available') {
++                this.receivedBytes = 0;
++                this.sentBytes = 0;
++            }
++        } catch {
++            // The collector reports a timed-out publisher if delivery keeps failing.
++        }
++    }
++
++    close(): void {
++        if (this.closed) {
++            return;
++        }
++        this.closed = true;
++        if (this.timer !== null) {
++            this.cancelTimeout(this.timer);
++            this.timer = null;
++        }
++        this.channel?.close();
++    }
++
++    private addBytes(direction: 'received' | 'sent', bytes: number): void {
++        if (this.closed || this.unavailableReason !== null) {
++            return;
++        }
++        const current = direction === 'received' ? this.receivedBytes : this.sentBytes;
++        if (!validBytes(bytes) || !Number.isSafeInteger(current + bytes)) {
++            this.unavailableReason = 'browser traffic counter received an invalid byte count';
++            this.publish();
++            return;
++        }
++        if (direction === 'received') {
++            this.receivedBytes += bytes;
++        } else {
++            this.sentBytes += bytes;
++        }
++    }
++
++    private scheduleHeartbeat(): void {
++        if (this.closed || !this.channel || this.timer !== null) {
++            return;
++        }
++        this.timer = this.scheduleTimeout(() => {
++            this.timer = null;
++            this.publish();
++            this.scheduleHeartbeat();
++        }, this.intervalMs);
++        (this.timer as unknown as { unref?: () => void }).unref?.();
++    }
++}
++
++export const trafficMeter = new TrafficMeter();
+diff --git a/src/mapview/MapView.ts b/src/mapview/MapView.ts
+index 3901dc5..16d3d1c 100644
+--- a/src/mapview/MapView.ts
++++ b/src/mapview/MapView.ts
+@@ -26 +26 @@ export class MapView extends GameShell {
+-    mapHeight: number = 22 << 6;
++    mapHeight: number = 19 << 6;
+@@ -28 +28 @@ export class MapView extends GameShell {
+-    mapOriginZ: number = 41 << 6;
++    mapOriginZ: number = 44 << 6;
+@@ -32 +31,0 @@ export class MapView extends GameShell {
+-    // custom:
+@@ -42 +40,0 @@ export class MapView extends GameShell {
+-    // floorcol.dat
+@@ -46 +43,0 @@ export class MapView extends GameShell {
+-    // underlay.dat
+@@ -49 +45,0 @@ export class MapView extends GameShell {
+-    // overlay.dat
+@@ -53 +48,0 @@ export class MapView extends GameShell {
+-    // loc.dat
+@@ -58 +52,0 @@ export class MapView extends GameShell {
+-    // custom: obj.dat
+@@ -61 +54,0 @@ export class MapView extends GameShell {
+-    // custom: npc.dat
+@@ -64 +56,0 @@ export class MapView extends GameShell {
+-    // custom: multi.dat
+@@ -67 +58,0 @@ export class MapView extends GameShell {
+-    // custom: free.dat
+@@ -113 +104 @@ export class MapView extends GameShell {
+-    overviewHeight: number = 180;
++    overviewHeight: number = 200;
+@@ -168 +159 @@ export class MapView extends GameShell {
+-        'Mini-Game',
++        '???',
+@@ -178,2 +169 @@ export class MapView extends GameShell {
+-        'Spice Shop',
+-        'Agility Training'
++        'Spice Shop'
+@@ -189 +178,0 @@ export class MapView extends GameShell {
+-        // custom:
+@@ -191 +179,0 @@ export class MapView extends GameShell {
+-        this.overviewWidth = ((this.overviewHeight * this.mapWidth) / this.mapHeight) | 0;
+@@ -201,8 +188,0 @@ export class MapView extends GameShell {
+-        // const size: Packet = new Packet(worldmap.read('size.dat'));
+-        // this.mapOriginX = size.g2();
+-        // this.mapOriginZ = size.g2();
+-        // this.mapWidth = size.g2();
+-        // this.mapHeight = size.g2();
+-        // this.focusX = this.mapStartX - this.mapOriginX;
+-        // this.focusZ = this.mapOriginZ + this.mapHeight - this.mapStartZ;
+-
+@@ -241 +220,0 @@ export class MapView extends GameShell {
+-            // custom:
+@@ -246 +224,0 @@ export class MapView extends GameShell {
+-            // custom:
+@@ -251 +228,0 @@ export class MapView extends GameShell {
+-            // custom:
+@@ -256 +232,0 @@ export class MapView extends GameShell {
+-            // custom:
+@@ -268 +243,0 @@ export class MapView extends GameShell {
+-            // empty
+@@ -276 +250,0 @@ export class MapView extends GameShell {
+-            // empty
+@@ -279 +252,0 @@ export class MapView extends GameShell {
+-        // custom:
+@@ -288 +260,0 @@ export class MapView extends GameShell {
+-        // custom:
+@@ -502 +473,0 @@ export class MapView extends GameShell {
+-                // custom:
+@@ -506 +476,0 @@ export class MapView extends GameShell {
+-                // custom:
+@@ -510 +479,0 @@ export class MapView extends GameShell {
+-                // custom:
+@@ -514 +482,0 @@ export class MapView extends GameShell {
+-                // custom:
+@@ -518 +485,0 @@ export class MapView extends GameShell {
+-                // custom:
+@@ -522 +488,0 @@ export class MapView extends GameShell {
+-                // custom:
+@@ -526 +491,0 @@ export class MapView extends GameShell {
+-                // custom:
+@@ -529 +493,0 @@ export class MapView extends GameShell {
+-                // custom:
+@@ -532 +495,0 @@ export class MapView extends GameShell {
+-                // custom:
+@@ -679,2 +641,0 @@ export class MapView extends GameShell {
+-    // ----
+-
+@@ -688 +648,0 @@ export class MapView extends GameShell {
+-        // todo: save to cache and redownload if necessary
+@@ -738 +697,0 @@ export class MapView extends GameShell {
+-    // jag::oldscape::rs2lib::worldmap::RenderedMapSquare::GetBlendedGroundColour
+@@ -774,2 +732,0 @@ export class MapView extends GameShell {
+-    // ----
+-
+@@ -870 +826,0 @@ export class MapView extends GameShell {
+-    // custom:
+@@ -890 +845,0 @@ export class MapView extends GameShell {
+-    // custom:
+@@ -910 +864,0 @@ export class MapView extends GameShell {
+-    // custom:
+@@ -930 +883,0 @@ export class MapView extends GameShell {
+-    // custom:
+@@ -950,3 +902,0 @@ export class MapView extends GameShell {
+-    // ----
+-
+-    // jag::oldscape::rs2lib::worldmap::HslUtils::GetRgb
+@@ -1014 +963,0 @@ export class MapView extends GameShell {
+-    // jag::oldscape::worldmap::Worldmap::RenderWorldmap
+@@ -1068,2 +1017,2 @@ export class MapView extends GameShell {
+-            let startX: number = (widthRatio * x) >> 16;
+-            let endX: number = (widthRatio * (x + 1)) >> 16;
++            const startX: number = (widthRatio * x) >> 16;
++            const endX: number = (widthRatio * (x + 1)) >> 16;
+@@ -1080,2 +1029,2 @@ export class MapView extends GameShell {
+-                let startY: number = (heightRatio * y) >> 16;
+-                let endY: number = (heightRatio * (y + 1)) >> 16;
++                const startY: number = (heightRatio * y) >> 16;
++                const endY: number = (heightRatio * (y + 1)) >> 16;
+@@ -1109 +1057,0 @@ export class MapView extends GameShell {
+-                        // custom: fix drawing diagonal doors
+@@ -1176 +1124 @@ export class MapView extends GameShell {
+-                let lengthX = endX - startX;
++                const lengthX = endX - startX;
+@@ -1184 +1132 @@ export class MapView extends GameShell {
+-                let multi = this.freePos[x + left];
++                const multi = this.freePos[x + left];
+@@ -1188 +1136 @@ export class MapView extends GameShell {
+-                    let lengthY = endY - startY;
++                    const lengthY = endY - startY;
+@@ -1207 +1155 @@ export class MapView extends GameShell {
+-                let lengthX = endX - startX;
++                const lengthX = endX - startX;
+@@ -1215 +1163 @@ export class MapView extends GameShell {
+-                let multi = this.multiPos[x + left];
++                const multi = this.multiPos[x + left];
+@@ -1219 +1167 @@ export class MapView extends GameShell {
+-                    let lengthY = endY - startY;
++                    const lengthY = endY - startY;
+@@ -1416 +1363,0 @@ export class MapView extends GameShell {
+-    // jag::oldscape::rs2lib::worldmap::OverlayShapes::DrawOverlayShape
+@@ -1801 +1747,0 @@ export class MapView extends GameShell {
+-    // custom:
+@@ -1810 +1756 @@ export class MapView extends GameShell {
+-        this.mapHeight = 22 << 6;
++        this.mapHeight = 19 << 6;
+@@ -1812 +1758 @@ export class MapView extends GameShell {
+-        this.mapOriginZ = 41 << 6;
++        this.mapOriginZ = 44 << 6;
+@@ -1824 +1769,0 @@ export class MapView extends GameShell {
+-    // custom:
+@@ -1833 +1778 @@ export class MapView extends GameShell {
+-        this.mapHeight = 22 << 6;
++        this.mapHeight = 19 << 6;
+@@ -1835 +1780 @@ export class MapView extends GameShell {
+-        this.mapOriginZ = 141 << 6;
++        this.mapOriginZ = 144 << 6;
+@@ -1847 +1791,0 @@ export class MapView extends GameShell {
+-    // custom:
+@@ -1856 +1800 @@ export class MapView extends GameShell {
+-        this.mapHeight = 17 << 6;
++        this.mapHeight = 15 << 6;
+@@ -1858 +1802 @@ export class MapView extends GameShell {
+-        this.mapOriginZ = 63 << 6;
++        this.mapOriginZ = 65 << 6;
+@@ -1869,2 +1812,0 @@ export class MapView extends GameShell {
+-    // ----
+-
+@@ -1891 +1832,0 @@ export class MapView extends GameShell {
+-        // e.preventDefault();
+@@ -1894 +1835 @@ export class MapView extends GameShell {
+-    override mouseUp(_x: number, _y: number, e: MouseEvent) {
++    override mouseUp(_x: number, _y: number, _e: MouseEvent) {
+@@ -1905 +1845,0 @@ export class MapView extends GameShell {
+-        // e.preventDefault();
+@@ -1908 +1848 @@ export class MapView extends GameShell {
+-    override pointerDown(x: number, y: number, e: PointerEvent) {
++    override pointerDown(x: number, y: number, _e: PointerEvent) {
+@@ -1918 +1858 @@ export class MapView extends GameShell {
+-    override pointerUp(_x: number, _y: number, e: PointerEvent) {
++    override pointerUp(_x: number, _y: number, _e: PointerEvent) {
+@@ -1940 +1880 @@ export class MapView extends GameShell {
+-    override windowMouseUp(e: MouseEvent) {
++    override windowMouseUp(_e: MouseEvent) {
+diff --git a/src/mapview/WorldMapFont.ts b/src/mapview/WorldMapFont.ts
+index 51d5812..a74124a 100644
+--- a/src/mapview/WorldMapFont.ts
++++ b/src/mapview/WorldMapFont.ts
+@@ -21 +21 @@ export default class WorldMapFont extends Pix2D {
+-    private fontCharTrans: boolean = false; // detects antialiasing
++    private fontCharTrans: boolean = false;
+@@ -28 +27,0 @@ export default class WorldMapFont extends Pix2D {
+-    // dumped from another system that guarantees no antialiasing was used
+@@ -130 +128,0 @@ export default class WorldMapFont extends Pix2D {
+-        // header
+@@ -197,2 +195,2 @@ export default class WorldMapFont extends Pix2D {
+-        let dx = x + info[c + 5];
+-        let dy = y - info[c + 6];
++        const dx = x + info[c + 5];
++        const dy = y - info[c + 6];
+@@ -209,2 +207,2 @@ export default class WorldMapFont extends Pix2D {
+-        if (dy < Pix2D.clipMinY) {
+-            const cutoff: number = Pix2D.clipMinY - dy;
++        if (y < Pix2D.clipMinY) {
++            const cutoff: number = Pix2D.clipMinY - y;
+@@ -212 +210 @@ export default class WorldMapFont extends Pix2D {
+-            dy = Pix2D.clipMinY;
++            y = Pix2D.clipMinY;
+@@ -217,2 +215,2 @@ export default class WorldMapFont extends Pix2D {
+-        if (dy + h > Pix2D.clipMaxY) {
+-            h -= dy + h - Pix2D.clipMaxY;
++        if (y + h > Pix2D.clipMaxY) {
++            h -= y + h - Pix2D.clipMaxY;
+@@ -221,2 +219,2 @@ export default class WorldMapFont extends Pix2D {
+-        if (dx < Pix2D.clipMinX) {
+-            const cutoff: number = Pix2D.clipMinX - dx;
++        if (x < Pix2D.clipMinX) {
++            const cutoff: number = Pix2D.clipMinX - x;
+@@ -224 +222 @@ export default class WorldMapFont extends Pix2D {
+-            dx = Pix2D.clipMinX;
++            x = Pix2D.clipMinX;
+@@ -231,2 +229,2 @@ export default class WorldMapFont extends Pix2D {
+-        if (dx + w > Pix2D.clipMaxX) {
+-            const cutoff: number = dx + w - Pix2D.clipMaxX;
++        if (x + w > Pix2D.clipMaxX) {
++            const cutoff: number = x + w - Pix2D.clipMaxX;
+diff --git a/src/sound/Filter.ts b/src/sound/Filter.ts
+index aeb96e0..359e049 100644
+--- a/src/sound/Filter.ts
++++ b/src/sound/Filter.ts
+@@ -72 +72 @@ export default class Filter {
+-        const scaled: number = value * 0.0015258789; // 1 / 655.36
++        const scaled: number = value * 0.0015258789;
+diff --git a/src/sound/JagFX.ts b/src/sound/JagFX.ts
+index 85a5b3e..ad08c84 100644
+--- a/src/sound/JagFX.ts
++++ b/src/sound/JagFX.ts
+@@ -89,12 +89,12 @@ export default class JagFX {
+-        JagFX.waveBuffer.p4(0x52494646); // "RIFF" ChunkID
+-        JagFX.waveBuffer.ip4(length + 36); // ChunkSize
+-        JagFX.waveBuffer.p4(0x57415645); // "WAVE" format
+-        JagFX.waveBuffer.p4(0x666d7420); // "fmt " chunk id
+-        JagFX.waveBuffer.ip4(16); // chunk size
+-        JagFX.waveBuffer.ip2(1); // audio format
+-        JagFX.waveBuffer.ip2(1); // num channels
+-        JagFX.waveBuffer.ip4(22050); // sample rate
+-        JagFX.waveBuffer.ip4(22050); // byte rate
+-        JagFX.waveBuffer.ip2(1); // block align
+-        JagFX.waveBuffer.ip2(8); // bits per sample
+-        JagFX.waveBuffer.p4(0x64617461); // "data"
++        JagFX.waveBuffer.p4(0x52494646);
++        JagFX.waveBuffer.ip4(length + 36);
++        JagFX.waveBuffer.p4(0x57415645);
++        JagFX.waveBuffer.p4(0x666d7420);
++        JagFX.waveBuffer.ip4(16);
++        JagFX.waveBuffer.ip2(1);
++        JagFX.waveBuffer.ip2(1);
++        JagFX.waveBuffer.ip4(22050);
++        JagFX.waveBuffer.ip4(22050);
++        JagFX.waveBuffer.ip2(1);
++        JagFX.waveBuffer.ip2(8);
++        JagFX.waveBuffer.p4(0x64617461);
+diff --git a/src/util/JavaRandom.ts b/src/util/JavaRandom.ts
+index 60805ba..9bf7e96 100644
+--- a/src/util/JavaRandom.ts
++++ b/src/util/JavaRandom.ts
+@@ -1,9 +0,0 @@
+-// based on: https://github.com/raybellis/java-random + TS support
+-
+-//
+-// An almost complete implementation in JS of the `java.util.Random`
+-// class from J2SE, designed to so far as possible produce the same
+-// output sequences as the Java original when supplied with the same
+-// seed.
+-//
+-
+@@ -16 +7 @@ const p2_48 = 0x1000000000000;
+-const p2_53 = Math.pow(2, 53);	// NB: exceeds Number.MAX_SAFE_INTEGER
++const p2_53 = Math.pow(2, 53);
+@@ -20,3 +10,0 @@ const m2_16 = 0xffff;
+-//
+-// multiplicative term for the PRNG
+-//
+@@ -27,4 +14,0 @@ let s2 = 0, s1 = 0, s0 = 0;
+-//
+-// 53-bit safe version of
+-// seed = (seed * 0x5DEECE66DL + 0xBL) & ((1L << 48) - 1)
+-//
+@@ -73,4 +56,0 @@ export default class JavaRandom {
+-    //
+-    // 53-bit safe version of
+-    // seed = (seed ^ 0x5DEECE66DL) & ((1L << 48) - 1)
+-    //
+@@ -84 +63,0 @@ export default class JavaRandom {
+-    // generate exclusive random number within bound
+@@ -92 +70,0 @@ export default class JavaRandom {
+-        // special case if bound is a power of two
+diff --git a/src/util/JsUtil.ts b/src/util/JsUtil.ts
+index 2bc9aa5..c822d88 100644
+--- a/src/util/JsUtil.ts
++++ b/src/util/JsUtil.ts
+@@ -5,6 +4,0 @@ export const downloadUrl = async (url: string): Promise<Uint8Array> => new Uint8
+-export const downloadText = async (url: string): Promise<string> => (await fetch(url)).text();
+-
+-export function arraycopy(src: Int32Array | Uint8Array, srcPos: number, dst: Int32Array | Uint8Array, dstPos: number, length: number): void {
+-    while (length--) dst[dstPos++] = src[srcPos++];
+-}
+-
+@@ -46 +39,0 @@ export function mulShift16(a: number, b: number): number {
+-    // (int) (((long) a * (long) b) >> 16);
+diff --git a/src/util/WorkerClock.ts b/src/util/WorkerClock.ts
+new file mode 100644
+index 0000000..42dc77f
+--- /dev/null
++++ b/src/util/WorkerClock.ts
+@@ -0,0 +1,72 @@
++import { sleep } from './JsUtil.js';
++
++const WORKER_SRC = `
++const timers = new Map();
++onmessage = (e) => {
++    const d = e.data;
++    if (d.cancel !== undefined) {
++        const t = timers.get(d.cancel);
++        if (t !== undefined) { clearTimeout(t); timers.delete(d.cancel); }
++        return;
++    }
++    timers.set(d.id, setTimeout(() => { timers.delete(d.id); postMessage(d.id); }, d.ms));
++};
++`;
++
++class WorkerClockImpl {
++    private worker: Worker | null = null;
++    private available = true;
++    private nextId = 1;
++    private pending = new Map<number, { resolve: () => void; ms: number; startedAt: number }>();
++
++    private ensure(): Worker | null {
++        if (this.worker || !this.available) {
++            return this.worker;
++        }
++        if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL?.createObjectURL !== 'function') {
++            this.available = false;
++            return null;
++        }
++        try {
++            const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
++            const worker = new Worker(url);
++            URL.revokeObjectURL(url);
++            worker.onmessage = (e: MessageEvent): void => {
++                const entry = this.pending.get(e.data as number);
++                if (entry) {
++                    this.pending.delete(e.data as number);
++                    entry.resolve();
++                }
++            };
++            worker.onerror = (): void => this.fail();
++            this.worker = worker;
++        } catch {
++            this.available = false;
++        }
++        return this.worker;
++    }
++
++    private fail(): void {
++        this.available = false;
++        this.worker = null;
++        const now = performance.now();
++        for (const { resolve, ms, startedAt } of this.pending.values()) {
++            setTimeout(resolve, Math.max(0, ms - (now - startedAt)));
++        }
++        this.pending.clear();
++    }
++
++    sleep(ms: number): Promise<void> {
++        const worker = this.ensure();
++        if (!worker) {
++            return sleep(ms);
++        }
++        const id = this.nextId++;
++        return new Promise<void>(resolve => {
++            this.pending.set(id, { resolve, ms, startedAt: performance.now() });
++            worker.postMessage({ id, ms });
++        });
++    }
++}
++
++export const WorkerClock = new WorkerClockImpl();

@@ -43,6 +43,7 @@ if (process.argv.includes('--check')) {
     try {
         current = readFileSync(OUT, 'utf8');
     } catch {
+        // A missing generated file is stale by definition.
     }
     if (current !== fresh) {
         console.error(`STALE: ${OUT} does not match the content pack — run: bun tools/shops/gen-shopdb.ts`);

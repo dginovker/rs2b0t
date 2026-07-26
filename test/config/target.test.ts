@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { resolveTarget } from '#/config/target.js';
+import { resolveTarget } from '#client/config/target.js';
 
 test('live target forces the rs2b2t host and TLS, ignoring the serving origin', () => {
     const t = resolveTarget('live', 'localhost:8890', false);

@@ -5,6 +5,7 @@
     "": {
       "name": "client2",
       "dependencies": {
+        "client2": "github:LostCityRS/Client-TS#815ff2a5e54daef02dc761410ddfc4659d7c84d7",
         "fflate": "^0.8.2",
       },
       "devDependencies": {
@@ -120,6 +121,8 @@
     "callsites": ["callsites@3.1.0", "", {}, ""],
 
     "chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, ""],
+
+    "client2": ["client2@github:LostCityRS/Client-TS#815ff2a", { "dependencies": { "fflate": "^0.8.2" }, "peerDependencies": { "typescript": "^5.0.0" } }, "LostCityRS-Client-TS-815ff2a", "sha512-c+8SemPgAVMz6IObjn/CXFtj8e7/XBeqY7SszkT3jdKhzqTx2NDhtkctKMWqZyBEh6B+bY8J3Qgnl48jK9j8IQ=="],
 
     "color-convert": ["color-convert@2.0.1", "", { "dependencies": { "color-name": "~1.1.4" } }, ""],
 

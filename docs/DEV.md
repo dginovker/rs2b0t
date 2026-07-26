@@ -83,7 +83,7 @@ responder on the requested port also aborts startup regardless of its response s
 Source edits are not hot-loaded into an already-open wall; activate them at the next
 planned launch rather than refreshing active bots.
 
-## Build targets (`bot.bundle.ts`, `src/config/target.ts`)
+## Build targets (`bot.bundle.ts`, patched `client2/src/config/target.ts`)
 
 The bundle bakes a server target (`TARGET=…`) that fixes how the client resolves the
 game WebSocket host and which RSA login modulus it uses:

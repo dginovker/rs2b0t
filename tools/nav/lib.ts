@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { unzipSync } from 'fflate';
 
-import { bunzip2 } from '#/io/BZip2.js';
+import { bunzip2 } from '#client/io/BZip2.js';
 
 export class Reader {
     readonly data: Uint8Array;
@@ -174,6 +174,7 @@ export class LocDef {
         } else if (code === 19) {
             this.active = dat.g1();
         } else if (code === 21 || code === 22 || code === 23 || code === 25 || code === 62 || code === 64 || code === 73 || code === 74) {
+            // Flag-only opcodes have no payload.
         } else if (code === 24 || code === 60 || code === 61 || code === 65 || code === 66 || code === 67 || code === 68) {
             dat.g2();
         } else if (code === 28 || code === 69 || code === 75) {

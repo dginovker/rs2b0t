@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { TrafficMeter, type TrafficMessage } from '#/io/TrafficMeter.js';
+import { TrafficMeter, type TrafficMessage } from '#client/io/TrafficMeter.js';
 
 class FakeChannel {
     readonly messages: TrafficMessage[] = [];

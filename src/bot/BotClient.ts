@@ -1,5 +1,5 @@
-import { Client } from '#/client/Client.js';
-import { WorkerClock } from '#/util/WorkerClock.js';
+import { Client } from '#client/client/Client.js';
+import { WorkerClock } from '#client/util/WorkerClock.js';
 
 import { BotHost } from './BotHost.js';
 import { RenderGate } from './runtime/RenderGate.js';
