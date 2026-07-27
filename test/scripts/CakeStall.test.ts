@@ -94,7 +94,20 @@ mock.module('#/bot/api/queries/Locs.js', () => ({
     }
 }));
 mock.module('#/bot/events/EventBus.js', () => ({
+    EventBus: class {
+        private active = new Set<string>();
+        hasListeners(event: string): boolean {
+            return this.active.has(event);
+        }
+        on(event: string): () => void {
+            this.active.add(event);
+            return () => {
+                this.active.delete(event);
+            };
+        }
+    },
     bus: {
+        hasListeners: (event: string): boolean => event === 'chat.message' && chatHandler !== null,
         on: (_event: string, cb: (e: { text: string }) => void): (() => void) => {
             chatHandler = cb;
             return () => {

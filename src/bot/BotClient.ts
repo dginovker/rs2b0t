@@ -1,8 +1,10 @@
 import { Client } from '#/client/Client.js';
-import { WorkerClock } from '#/util/WorkerClock.js';
 
 import { BotHost } from './BotHost.js';
+import { resolveFrameClock } from './runtime/FrameClock.js';
 import { RenderGate } from './runtime/RenderGate.js';
+
+const frameClock = resolveFrameClock();
 
 export default class BotClient extends Client {
     constructor(nodeid: number, lowmem: boolean, members: boolean) {
@@ -11,7 +13,7 @@ export default class BotClient extends Client {
     }
 
     protected override async frameDelay(ms: number): Promise<void> {
-        await WorkerClock.sleep(ms);
+        await frameClock.sleep(ms);
     }
 
     override async mainloop(): Promise<void> {

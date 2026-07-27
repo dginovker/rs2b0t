@@ -1,4 +1,5 @@
 import { TrafficCollector } from '../adapter/TrafficAdapter.js';
+import { installSharedFrameClock } from '../runtime/FrameClock.js';
 import { DomSlotOps, orderedSlotElements } from './DomSlotOps.js';
 import { MultiBoxController } from './MultiBoxController.js';
 import { ProfileChooser } from './ProfileChooser.js';
@@ -6,6 +7,8 @@ import { vault, type Profile } from './ProfileVault.js';
 import { ResourcePanel } from './ResourcePanel.js';
 import { VaultPrompt } from './VaultPrompt.js';
 import type { Account } from './types.js';
+
+installSharedFrameClock();
 
 function boot(): void {
     const rail = document.getElementById('mbx-rail')!;

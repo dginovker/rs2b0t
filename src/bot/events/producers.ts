@@ -8,11 +8,19 @@ let lastInvIds: number[] | null = null;
 let lastInvCounts: number[] | null = null;
 let lastVarps: number[] | null = null;
 let lastChatSig: string | null = null;
+let lastPollAt = Number.NEGATIVE_INFINITY;
+
+export const EVENT_POLL_INTERVAL_MS = 100;
+
+export function eventPollDue(now: number, previous: number): boolean {
+    return now < previous || now - previous >= EVENT_POLL_INTERVAL_MS;
+}
 
 export function pumpProducers(tickCount: number): void {
     if (!reader.ingame()) {
         lastXp = lastLevel = lastInvIds = lastInvCounts = lastVarps = null;
         lastChatSig = null;
+        lastPollAt = Number.NEGATIVE_INFINITY;
         return;
     }
 
@@ -21,10 +29,32 @@ export function pumpProducers(tickCount: number): void {
         bus.emit('tick', { tick: tickCount });
     }
 
-    diffSkills();
-    diffInventory();
-    diffVarps();
-    diffChat();
+    const now = performance.now();
+    if (!eventPollDue(now, lastPollAt)) {
+        return;
+    }
+    lastPollAt = now;
+
+    if (bus.hasListeners('skill.xp') || bus.hasListeners('skill.level')) {
+        diffSkills();
+    } else {
+        lastXp = lastLevel = null;
+    }
+    if (bus.hasListeners('inventory.changed')) {
+        diffInventory();
+    } else {
+        lastInvIds = lastInvCounts = null;
+    }
+    if (bus.hasListeners('varp.changed')) {
+        diffVarps();
+    } else {
+        lastVarps = null;
+    }
+    if (bus.hasListeners('chat.message')) {
+        diffChat();
+    } else {
+        lastChatSig = null;
+    }
 }
 
 function diffSkills(): void {

@@ -44,8 +44,12 @@ export interface EventMap {
 
 type Listener<K extends keyof EventMap> = (payload: EventMap[K]) => void;
 
-class EventBusImpl {
+export class EventBus {
     private listeners = new Map<keyof EventMap, Set<Listener<keyof EventMap>>>();
+
+    hasListeners<K extends keyof EventMap>(event: K): boolean {
+        return (this.listeners.get(event)?.size ?? 0) > 0;
+    }
 
     off<K extends keyof EventMap>(event: K, cb: Listener<K>): void {
         this.listeners.get(event)?.delete(cb as Listener<keyof EventMap>);
@@ -78,4 +82,4 @@ class EventBusImpl {
     }
 }
 
-export const bus = new EventBusImpl();
+export const bus = new EventBus();
