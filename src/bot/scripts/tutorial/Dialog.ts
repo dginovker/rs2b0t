@@ -1,17 +1,13 @@
-import type { Task } from '../../api/Bot.js';
 import { Execution } from '../../api/Execution.js';
 import { ChatDialog } from '../../api/hud/ChatDialog.js';
+import { task } from './Task.js';
 
 const DECLINE_SKIP = ['no, thank you'];
 
 const MOVE_ON = ['ready to move on', 'yes.', 'nothing, thanks'];
 
-export class AdvanceDialog implements Task {
-    validate(): boolean {
-        return ChatDialog.isOpen();
-    }
-
-    async execute(): Promise<void> {
+export const advanceDialog = () =>
+    task(ChatDialog.isOpen, async () => {
         if (ChatDialog.canContinue()) {
             await ChatDialog.continue();
             await Execution.delayTicks(1);
@@ -34,5 +30,4 @@ export class AdvanceDialog implements Task {
 
         await ChatDialog.chooseOption(opts[pick]);
         await Execution.delayTicks(1);
-    }
-}
+    });
