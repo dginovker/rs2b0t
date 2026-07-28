@@ -5,10 +5,12 @@ import type CollisionMap from '#/dash3d/CollisionMap.js';
 import type World from '#/dash3d/World.js';
 import type LinkList from '#/datastruct/LinkList.js';
 import type Packet from '#/io/Packet.js';
+import type IfType from '#/config/IfType.js';
 
 export interface RawClient {
     ingame: boolean;
     sceneState: number;
+    interfaceTypes: IfType[];
 
     mapBuildBaseX: number;
     mapBuildBaseZ: number;
@@ -82,6 +84,7 @@ export interface RawClient {
 export const SELF_TEST = [
     'ingame',
     'sceneState',
+    'interfaceTypes',
     'mapBuildBaseX',
     'mapBuildBaseZ',
     'minusedlevel',

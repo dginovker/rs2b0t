@@ -10,18 +10,31 @@ bot starves. In a single tab they all hold full speed while that tab is visible.
 
 ## Contents
 
-- [Slots and iframes](#slots-and-iframes)
+- [Visual and headless slots](#visual-and-headless-slots)
 - [Profiles and the vault](#profiles-and-the-vault)
 - [Login coordination](#login-coordination)
+- [Large-fleet performance](#large-fleet-performance)
 - [Resource telemetry](#resource-telemetry)
 - [Viewers and the launcher](#viewers-and-the-launcher)
 
-## Slots and iframes
+## Visual and headless slots
 
-Each slot is an **iframe running the ordinary single-instance client** — the same
-`bot.html`, unmodified. The wall is a manager around them, not a different client.
-[`MultiBoxController`](../src/bot/multibox/MultiBoxController.ts) owns the model;
-[`DomSlotOps`](../src/bot/multibox/DomSlotOps.ts) owns the DOM.
+The mode button at the top of the rail chooses between two slot implementations.
+Choose the mode before adding bots; changing a live fleet would require restarting
+its clients, so the button locks once the first slot exists.
+
+- **Visual** is the default. Each slot is an iframe running the ordinary
+  single-instance client — the same `bot.html`, unmodified. It provides the game
+  canvas and manual game input.
+- **Headless** runs graphics-free protocol clients in the wall's one JavaScript
+  realm. It retains login, game state, movement, scripts, parameters, start/pause/
+  stop controls, status, and logs. It intentionally has no game canvas, audio, or
+  manual game input. Open `multibox.html?headless=1` or use the mode button.
+
+[`MultiBoxController`](../src/bot/multibox/MultiBoxController.ts) owns the shared
+model. [`DomSlotOps`](../src/bot/multibox/DomSlotOps.ts) renders visual slots and
+[`HeadlessSlotOps`](../src/bot/multibox/HeadlessSlotOps.ts) renders headless status
+cards and controls.
 
 A slot exposes a narrow handle rather than its internals:
 
@@ -37,22 +50,47 @@ export interface SlotHandle {
 
 Four details that are not guessable from the outside:
 
-- **Rail slots paint at ~1 fps; the focused slot draws every frame.** That is what
+- **Visual rail slots paint at ~1 fps; the focused slot draws every frame.** That is what
   keeps a dozen bots affordable on a laptop. The rate is set per-iframe at runtime —
   the standalone client keeps its own `RenderGate` default.
 - **Tiles carry a click-catching overlay** (`.mbx-hit`) above the iframe, because a
   click that lands *in* the iframe goes to the game. The overlay is what lets clicking
   a tile switch which bot is focused.
-- **Storage is boxed per account.** Same-origin iframes share one `sessionStorage`, so
-  every slot would otherwise overwrite the others' credentials — see
+- **Storage is boxed per account.** Same-origin clients share one `sessionStorage`, so
+  every slot would otherwise overwrite the others' credentials or settings — see
   [per-instance storage](ARCHITECTURE.md#per-instance-storage). The wall passes
-  `?box=<account>`.
+  `?box=<account>` to visual slots and configures the same box directly in headless
+  slots.
 - `SlotStatus.player` is the logged-in character *once known*: a bot is added empty
   and has its account typed into its own panel, so the rail tile cannot show a name
   before that.
 
 Reordering slots preserves the client in each one. Rebuilding the iframe would drop
 the bot's session and force a re-login.
+
+## Large-fleet performance
+
+Headless mode removes the per-account renderer, canvas, models, audio graph, iframe,
+and dedicated cache/navigation workers. Large immutable client/config modules are
+parsed once, while each account still owns its mutable protocol, interface,
+inventory, script, and storage state. The fleet shares one on-demand cache worker
+and one navigation worker.
+
+The repeatable local-server benchmark is:
+
+```sh
+bun tools/multibox-perf-test.ts --base http://localhost:8890 \
+  --mode headless --bots 20 --seconds 60 --label headless-20
+```
+
+It waits for all clients to enter the game and for every selected script to loop,
+then measures wall-clock CPU over the complete Chrome process tree, Linux PSS/RSS,
+event-loop delay, focus latency, logical game-clock rate, actual client-pump rate,
+server ticks, and script loops. Headless pumps state at 5 Hz (at most 200 ms between
+checks) while preserving the client's 50 Hz logical clock; the game server itself
+ticks at roughly 1.67 Hz.
+It writes JSON plus a full-page screenshot under `out/`. Use `--mode visual` against
+an otherwise identical build for the control run.
 
 ## Profiles and the vault
 

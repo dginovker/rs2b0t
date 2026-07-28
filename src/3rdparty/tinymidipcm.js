@@ -1,4 +1,5 @@
 import loadTinyMidiPCM from '#3rdparty/tinymidipcm/tinymidipcm.mjs';
+import { ensureAudioContext } from '#3rdparty/audio.js';
 
 class TinyMidiPCM {
     constructor(options = {}) {
@@ -130,8 +131,19 @@ class TinyMidiPCM {
     }
 }
 
-// controlling tinymidipcm:
-(async () => {
+// The WASM synth and soundfont are substantial. Load them only when the
+// graphical client actually asks to play music; headless clients never do.
+let tinyMidiReady;
+function initTinyMidi() {
+    tinyMidiReady ??= initializeTinyMidi();
+    return tinyMidiReady;
+}
+
+async function initializeTinyMidi() {
+    const audioContext = ensureAudioContext();
+    if (!audioContext) {
+        return;
+    }
     const channels = 2;
     const sampleRate = 22050;
     const flushTime = 250;
@@ -150,12 +162,12 @@ class TinyMidiPCM {
     // let currentMidiBuffer = null;
     let samples = new Float32Array();
 
-    let gainNode = window.audioContext.createGain();
-    gainNode.gain.setValueAtTime(0.1, window.audioContext.currentTime);
-    gainNode.connect(window.audioContext.destination);
+    let gainNode = audioContext.createGain();
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+    gainNode.connect(audioContext.destination);
 
     // let startTime = 0;
-    let lastTime = window.audioContext.currentTime;
+    let lastTime = audioContext.currentTime;
     let bufferSources = [];
 
     const tinyMidiPCM = new TinyMidiPCM({
@@ -340,12 +352,13 @@ class TinyMidiPCM {
             fade = fadeResetStep;
         }
     };
-})();
+}
 
 export function playMidi(data, volume, fade) {
-    if (window._tinyMidiPlay) {
-        window._tinyMidiPlay(data, volume, fade);
+    if (!data) {
+        return;
     }
+    void initTinyMidi().then(() => window._tinyMidiPlay?.(data, volume, fade));
 }
 
 export function setMidiVolume(volume) {

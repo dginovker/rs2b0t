@@ -50,6 +50,8 @@ export default abstract class GameShell {
         e.preventDefault();
     };
 
+    protected readonly graphicsEnabled: boolean;
+
     protected async maininit() { }
     protected mainquit() { }
     protected async mainloop() { }
@@ -59,12 +61,18 @@ export default abstract class GameShell {
     }
     protected refresh() { }
 
-    constructor(resizetoFit: boolean = false) {
-        canvas.tabIndex = -1;
-        canvas2d.fillStyle = 'black';
-        canvas2d.fillRect(0, 0, canvas.width, canvas.height);
+    constructor(resizetoFit: boolean = false, graphicsEnabled: boolean = true) {
+        this.graphicsEnabled = graphicsEnabled;
+        if (graphicsEnabled) {
+            canvas.tabIndex = -1;
+            canvas2d.fillStyle = 'black';
+            canvas2d.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
         this.resizeToFit = resizetoFit;
+        if (!graphicsEnabled) {
+            return;
+        }
         if (this.resizeToFit) {
             this.resize(window.innerWidth, window.innerHeight);
         } else {
@@ -73,11 +81,11 @@ export default abstract class GameShell {
     }
 
     protected get sWid(): number {
-        return canvas.width;
+        return this.graphicsEnabled ? canvas.width : 765;
     }
 
     protected get sHei(): number {
-        return canvas.height;
+        return this.graphicsEnabled ? canvas.height : 503;
     }
 
     protected resize(width: number, height: number) {
@@ -88,36 +96,38 @@ export default abstract class GameShell {
     }
 
     async run() {
-        window.addEventListener('resize', this.resizeHandler, false);
+        if (this.graphicsEnabled) {
+            window.addEventListener('resize', this.resizeHandler, false);
 
-        canvas.onfocus = this.onfocus.bind(this);
-        canvas.onblur = this.onblur.bind(this);
+            canvas.onfocus = this.onfocus.bind(this);
+            canvas.onblur = this.onblur.bind(this);
 
-        canvas.onkeydown = this.onkeydown.bind(this);
-        canvas.onkeyup = this.onkeyup.bind(this);
+            canvas.onkeydown = this.onkeydown.bind(this);
+            canvas.onkeyup = this.onkeyup.bind(this);
 
-        canvas.onmousedown = this.onmousedown.bind(this);
-        canvas.onpointerdown = this.onpointerdown.bind(this);
-        canvas.onmouseup = this.onmouseup.bind(this);
-        canvas.onpointerup = this.onpointerup.bind(this);
-        canvas.onpointerenter = this.onpointerenter.bind(this);
-        canvas.onpointerleave = this.onpointerleave.bind(this);
-        canvas.onpointermove = this.onpointermove.bind(this);
-        window.onmouseup = this.windowMouseUp.bind(this);
-        window.onmousemove = this.windowMouseMove.bind(this);
+            canvas.onmousedown = this.onmousedown.bind(this);
+            canvas.onpointerdown = this.onpointerdown.bind(this);
+            canvas.onmouseup = this.onmouseup.bind(this);
+            canvas.onpointerup = this.onpointerup.bind(this);
+            canvas.onpointerenter = this.onpointerenter.bind(this);
+            canvas.onpointerleave = this.onpointerleave.bind(this);
+            canvas.onpointermove = this.onpointermove.bind(this);
+            window.onmouseup = this.windowMouseUp.bind(this);
+            window.onmousemove = this.windowMouseMove.bind(this);
 
-        if (this.isTouchDevice) {
-            canvas.style.touchAction = 'pinch-zoom';
-            canvas.addEventListener('touchend', this.touchEndHandler, { passive: false });
+            if (this.isTouchDevice) {
+                canvas.style.touchAction = 'pinch-zoom';
+                canvas.addEventListener('touchend', this.touchEndHandler, { passive: false });
+            }
+
+            // suppress the browser menu over the game canvas only — the rest of the
+            // page (e.g. the bot panel) stays right-clickable for inspect/devtools
+            canvas.oncontextmenu = (e: MouseEvent): void => {
+                e.preventDefault();
+            };
+
+            await this.drawProgress('Loading...', 0);
         }
-
-        // suppress the browser menu over the game canvas only — the rest of the
-        // page (e.g. the bot panel) stays right-clickable for inspect/devtools
-        canvas.oncontextmenu = (e: MouseEvent): void => {
-            e.preventDefault();
-        };
-
-        await this.drawProgress('Loading...', 0);
         await this.maininit();
 
         let ntime: number = 0;
@@ -198,7 +208,9 @@ export default abstract class GameShell {
                 this.fps = ((ratio * 1000) / (this.deltime * 256)) | 0;
             }
 
-            await this.mainredraw();
+            if (this.graphicsEnabled) {
+                await this.mainredraw();
+            }
 
             if (this.tfps < 50) {
                 const tfps: number = 1000 / this.tfps - (performance.now() - ntime);
@@ -228,6 +240,10 @@ export default abstract class GameShell {
     protected shutdown() {
         this.state = -2;
         this.mainquit();
+
+        if (!this.graphicsEnabled) {
+            return;
+        }
 
         window.removeEventListener('resize', this.resizeHandler, false);
         canvas.onfocus = null;

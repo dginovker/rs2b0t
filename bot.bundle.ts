@@ -96,4 +96,27 @@ for (const [entry, output] of entrypoints) {
     fs.writeFileSync(`out/${output}.map`, sourcemap);
 }
 
+// Headless instances are imported with a unique query string so each account
+// receives private bot-runtime singletons in one Window. Keep the large client
+// and config graph in a query-free shared chunk: parsing and immutable config
+// data are then paid once for the whole fleet instead of once per account.
+const headlessOutdir = 'out/headless';
+fs.rmSync(headlessOutdir, { recursive: true, force: true });
+const headlessBuild = await Bun.build({
+    entrypoints: ['src/bot/headless.ts', 'src/client/Client.ts'],
+    outdir: headlessOutdir,
+    naming: {
+        entry: '[name].[ext]',
+        chunk: 'chunks/[name]-[hash].[ext]'
+    },
+    splitting: true,
+    sourcemap: 'external',
+    define,
+    minify: prod
+});
+if (!headlessBuild.success) {
+    headlessBuild.logs.forEach((x: unknown) => console.log(x));
+    process.exit(1);
+}
+
 console.log(`bot bundle built (${prod ? 'prod' : 'dev'}): out/botclient.js`);

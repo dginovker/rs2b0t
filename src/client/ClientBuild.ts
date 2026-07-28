@@ -7,7 +7,7 @@ import { LocAngle } from '#/dash3d/LocAngle.js';
 import { LocShape } from '#/dash3d/LocShape.js';
 import { MapFlag } from '#/dash3d/MapFlag.js';
 import Model from '#/dash3d/Model.js';
-import type ModelSource from '#/dash3d/ModelSource.js';
+import ModelSource from '#/dash3d/ModelSource.js';
 import { TerrainOverlayShape } from '#/dash3d/TerrainOverlayShape.js';
 import World from '#/dash3d/World.js';
 
@@ -30,6 +30,8 @@ export default class ClientBuild {
 
     static lowMem: boolean = true;
     static minusedlevel: number = 0;
+    static modelsEnabled: boolean = true;
+    private static readonly shellModel = new ModelSource();
 
     private readonly maxTileX: number;
     private readonly maxTileZ: number;
@@ -89,6 +91,17 @@ export default class ClientBuild {
                     }
                 }
             }
+        }
+
+        if (!ClientBuild.modelsEnabled) {
+            for (let x: number = 0; x < this.maxTileX; x++) {
+                for (let z: number = 0; z < this.maxTileZ; z++) {
+                    if ((this.mapl[1][x][z] & MapFlag.LinkBelow) !== 0) {
+                        world?.pushDown(x, z);
+                    }
+                }
+            }
+            return;
         }
 
         ClientBuild.hueOff += ((Math.random() * 5.0) | 0) - 2;
@@ -788,6 +801,11 @@ export default class ClientBuild {
 
         const typecode2: number = ((((angle << 6) + shape) | 0) << 24) >> 24;
 
+        if (!ClientBuild.modelsEnabled) {
+            ClientBuild.addShellLoc(level, x, z, y, loc, shape, angle, typecode, typecode2, world, collision);
+            return;
+        }
+
         if (shape === LocShape.GROUND_DECOR) {
             if (!ClientBuild.lowMem || loc.active || loc.forcedecor) {
                 let model: ModelSource | null;
@@ -1184,6 +1202,11 @@ export default class ClientBuild {
 
         const typecode2: number = ((((angle << 6) + shape) | 0) << 24) >> 24;
 
+        if (!ClientBuild.modelsEnabled) {
+            ClientBuild.addShellLoc(level, x, z, y, loc, shape, angle, typecode, typecode2, world, cmap);
+            return;
+        }
+
         if (shape === LocShape.GROUND_DECOR) {
             let model: ModelSource | null;
             if (loc.anim === -1) {
@@ -1388,6 +1411,68 @@ export default class ClientBuild {
 
                 world?.setDecor(level, x, z, y, 0, 0, typecode, model, typecode2, angle, 768);
             }
+        }
+    }
+
+    private static addShellLoc(
+        level: number,
+        x: number,
+        z: number,
+        y: number,
+        loc: LocType,
+        shape: number,
+        angle: number,
+        typecode: number,
+        typecode2: number,
+        world: World | null,
+        collision: CollisionMap | null
+    ): void {
+        const model = ClientBuild.shellModel;
+
+        if (shape === LocShape.GROUND_DECOR) {
+            if (!ClientBuild.lowMem || loc.active || loc.forcedecor) {
+                world?.setGroundDecor(model, level, x, z, y, typecode, typecode2);
+                if (loc.blockwalk && loc.active) {
+                    collision?.blockGround(x, z);
+                }
+            }
+            return;
+        }
+
+        if (shape === LocShape.CENTREPIECE_STRAIGHT || shape === LocShape.CENTREPIECE_DIAGONAL) {
+            const width = angle === LocAngle.NORTH || angle === LocAngle.SOUTH ? loc.length : loc.width;
+            const length = angle === LocAngle.NORTH || angle === LocAngle.SOUTH ? loc.width : loc.length;
+            world?.addScenery(level, x, z, y, model, typecode, typecode2, width, length, shape === LocShape.CENTREPIECE_DIAGONAL ? 256 : 0);
+            if (loc.blockwalk) {
+                collision?.addLoc(x, z, loc.width, loc.length, angle, loc.blockrange);
+            }
+            return;
+        }
+
+        if (shape === LocShape.WALL_DIAGONAL || shape >= LocShape.ROOF_STRAIGHT) {
+            world?.addScenery(level, x, z, y, model, typecode, typecode2, 1, 1, 0);
+            if (loc.blockwalk) {
+                collision?.addLoc(x, z, loc.width, loc.length, angle, loc.blockrange);
+            }
+            return;
+        }
+
+        if (shape >= LocShape.WALL_STRAIGHT && shape <= LocShape.WALL_SQUARE_CORNER) {
+            if (shape === LocShape.WALL_L) {
+                const offset = (angle + 1) & 0x3;
+                world?.setWall(level, x, z, y, ClientBuild.WSHAPE0[angle], ClientBuild.WSHAPE0[offset], model, model, typecode, typecode2);
+            } else {
+                const wallShape = shape === LocShape.WALL_STRAIGHT ? ClientBuild.WSHAPE0[angle] : ClientBuild.WSHAPE1[angle];
+                world?.setWall(level, x, z, y, wallShape, 0, model, null, typecode, typecode2);
+            }
+            if (loc.blockwalk) {
+                collision?.addWall(x, z, shape, angle, loc.blockrange);
+            }
+            return;
+        }
+
+        if (shape >= LocShape.WALLDECOR_STRAIGHT_NOOFFSET && shape <= LocShape.WALLDECOR_DIAGONAL_BOTH) {
+            world?.setDecor(level, x, z, y, 0, 0, typecode, model, typecode2, angle * 512, ClientBuild.WSHAPE0[angle]);
         }
     }
 

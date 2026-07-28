@@ -18,6 +18,12 @@ export interface SlotStatus {
     loopCycle: number;
     drawn: number;
     scriptState: string;
+    // Optional headless diagnostics used by the repeatable MultiBox load harness.
+    // Visual-mode counters are read directly from their client iframes.
+    tickCount?: number;
+    tickMeanMs?: number;
+    scriptLoops?: number;
+    clientFps?: number;
 }
 
 export interface SlotSnapshot extends SlotStatus {

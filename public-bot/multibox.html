@@ -9,6 +9,9 @@
         /* app = a big ACTIVE pane on the left + a fixed-width rail of live thumbnails on the right */
         #mbx-app { display: flex; height: 100vh; }
         #mbx-main { flex: 1 1 auto; min-width: 0; position: relative; background: #0a0a0a; }
+        #mbx-empty { position: absolute; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center; color: #666; }
+        #mbx-main.has-bots #mbx-empty { display: none; }
+        #mbx-empty strong { color: #5be05b; font-size: 16px; }
         /* RAIL_W below must match RAIL_W in DomSlotOps.ts (focused-slot geometry depends on it) */
         #mbx-rail { flex: 0 0 264px; width: 264px; box-sizing: border-box; height: 100vh; overflow-y: auto; overflow-x: hidden; padding: 12px; background: #111; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 10px; }
 
@@ -44,6 +47,9 @@
 
         .mbx-addtile { display: flex; align-items: center; justify-content: center; height: 52px; flex: 0 0 auto; font-size: 14px; color: #666; border: 1px dashed #444; border-radius: 4px; cursor: pointer; }
         .mbx-addtile:hover { color: #04A800; border-color: #04A800; }
+        .mbx-mode { width: 236px; flex: 0 0 auto; padding: 6px 8px; border: 1px solid #355d39; border-radius: 4px; background: #102313; color: #72df7d; cursor: pointer; font: inherit; }
+        .mbx-mode:hover:not(:disabled) { border-color: #04A800; background: #17351b; }
+        .mbx-mode:disabled { opacity: .55; cursor: default; }
         .mbx-resources { width: 236px; box-sizing: border-box; flex: 0 0 auto; padding: 7px 8px; border: 1px solid #2c2c2c; border-radius: 4px; background: #0a0a0a; display: flex; flex-direction: column; gap: 4px; }
         .mbx-resource-bots { padding-bottom: 4px; border-bottom: 1px solid #222; color: #5be05b; }
         .mbx-resource-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 3px 8px; }
@@ -79,12 +85,49 @@
         .mbx-chooser-form { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #2c2c2c; padding-top: 8px; }
         .mbx-chooser-form input { background: #000; border: 1px solid #333; color: #ddd; padding: 5px 7px; border-radius: 3px; font: inherit; }
         .mbx-chooser-form button { background: #07330a; border: 1px solid #04A800; color: #5be05b; padding: 5px 7px; border-radius: 3px; cursor: pointer; font: inherit; }
+
+        /* Headless mode keeps all clients in one page and replaces live game
+           thumbnails with status cards. The focused card exposes the complete
+           script/settings/log control surface, but intentionally no renderer. */
+        .mbx-headless-thumb { box-sizing: border-box; padding: 16px 12px 10px; background: radial-gradient(circle at top right, #15351a, #090d09 62%); }
+        .mbx-headless-badge { color: #72df7d; font-size: 10px; letter-spacing: .14em; margin-bottom: 18px; }
+        .mbx-headless-state { color: #ddd; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .mbx-headless-script { color: #7d8b7e; margin-top: 8px; line-height: 1.4; }
+        .mbx-headless-pane { position: absolute; inset: 0; overflow: auto; box-sizing: border-box; padding: 28px clamp(24px, 5vw, 72px); background: #0a0e0a; }
+        .mbx-headless-pane[hidden] { display: none; }
+        .mbx-headless-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; border-bottom: 1px solid #243026; padding-bottom: 12px; }
+        .mbx-headless-title { margin: 0; color: #72df7d; font-size: 24px; }
+        .mbx-headless-mode { color: #667668; }
+        .mbx-headless-status { margin: 14px 0; color: #a5b7a7; }
+        .mbx-headless-status.is-error { color: #ff7b7b; }
+        .mbx-headless-controls { max-width: 900px; border: 1px solid #243026; border-radius: 6px; padding: 18px; background: #101610; }
+        .mbx-headless-label { display: grid; gap: 7px; color: #809084; text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
+        .mbx-headless-select, .mbx-headless-input { box-sizing: border-box; width: 100%; background: #080b08; color: #ddd; border: 1px solid #344137; border-radius: 4px; padding: 7px 9px; font: 12px ui-monospace, monospace; }
+        .mbx-headless-description { margin: 12px 0 16px; color: #829085; line-height: 1.5; }
+        .mbx-headless-settings { display: grid; gap: 8px; max-height: 42vh; overflow: auto; padding-right: 5px; }
+        .mbx-headless-setting { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr); gap: 18px; align-items: center; padding: 8px 0; border-top: 1px solid #202a22; }
+        .mbx-headless-setting-text { display: grid; gap: 3px; }
+        .mbx-headless-setting-label { color: #c5cec6; }
+        .mbx-headless-setting-help { color: #68736a; font-size: 10px; line-height: 1.4; }
+        .mbx-headless-setting input[type=checkbox] { justify-self: end; width: 18px; height: 18px; accent-color: #04A800; }
+        .mbx-headless-empty { color: #68736a; padding: 8px 0; }
+        .mbx-headless-buttons { display: flex; gap: 8px; margin-top: 16px; }
+        .mbx-headless-button { min-width: 100px; border: 1px solid #344137; border-radius: 4px; padding: 7px 14px; background: #171e18; color: #d5ddd6; cursor: pointer; font: inherit; }
+        .mbx-headless-button:hover:not(:disabled) { border-color: #04A800; }
+        .mbx-headless-button:disabled { opacity: .4; cursor: default; }
+        .mbx-headless-start { color: #72df7d; }
+        .mbx-headless-subtitle { color: #819083; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; margin: 22px 0 8px; }
+        .mbx-headless-log { max-width: 900px; height: 220px; overflow: auto; box-sizing: border-box; padding: 10px; border: 1px solid #202a22; border-radius: 5px; background: #050805; color: #aab4ab; line-height: 1.5; }
+        .mbx-headless-log-line.is-warn { color: #e0d75b; }
+        .mbx-headless-log-line.is-error { color: #ff7b7b; }
+        @media (max-width: 760px) { .mbx-headless-setting { grid-template-columns: 1fr; gap: 7px; } }
     </style>
 </head>
 <body>
     <div id="mbx-app">
-        <div id="mbx-main"></div>
+        <div id="mbx-main"><div id="mbx-empty"><strong>MultiBox</strong><span>Add a profile, or choose headless mode for large fleets.</span></div></div>
         <div id="mbx-rail">
+            <button id="mbx-mode" class="mbx-mode" type="button">Mode: Visual</button>
             <div id="mbx-add" class="mbx-addtile">+ add bot</div>
             <div id="mbx-resources" class="mbx-resources">
                 <div id="mbx-resource-bots" class="mbx-resource-bots">0 bots</div>

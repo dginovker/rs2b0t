@@ -1,5 +1,6 @@
 import { TrafficCollector } from '../adapter/TrafficAdapter.js';
 import { DomSlotOps, orderedSlotElements } from './DomSlotOps.js';
+import { HeadlessSlotOps } from './HeadlessSlotOps.js';
 import { MultiBoxController } from './MultiBoxController.js';
 import { ProfileChooser } from './ProfileChooser.js';
 import { vault, type Profile } from './ProfileVault.js';
@@ -8,10 +9,14 @@ import { VaultPrompt } from './VaultPrompt.js';
 import type { Account } from './types.js';
 
 function boot(): void {
+    const main = document.getElementById('mbx-main')!;
     const rail = document.getElementById('mbx-rail')!;
     const addTile = document.getElementById('mbx-add')!;
-
-    const ops = new DomSlotOps(rail, addTile);
+    const headless = new URLSearchParams(location.search).get('headless') === '1';
+    if (headless) {
+        (globalThis as typeof globalThis & { __rs2b0tDisableAudio?: boolean }).__rs2b0tDisableAudio = true;
+    }
+    const ops = headless ? new HeadlessSlotOps(main, rail, addTile) : new DomSlotOps(rail, addTile);
     const controller = new MultiBoxController(ops);
     const traffic = new TrafficCollector();
     const resources = new ResourcePanel(
@@ -186,6 +191,16 @@ function boot(): void {
 
     const app = document.getElementById('mbx-app')!;
     const drawer = document.getElementById('mbx-drawer')!;
+    const modeButton = document.getElementById('mbx-mode') as HTMLButtonElement;
+    modeButton.textContent = headless ? 'Mode: Headless' : 'Mode: Visual';
+    modeButton.title = headless ? 'One-page protocol clients: no game rendering or manual game input' : 'Full graphical clients: switch before adding bots for high-efficiency mode';
+    modeButton.addEventListener('click', () => {
+        if (controller.snapshot().length > 0) return;
+        const url = new URL(location.href);
+        if (headless) url.searchParams.delete('headless');
+        else url.searchParams.set('headless', '1');
+        location.assign(url);
+    });
     const RAIL_HIDDEN_KEY = 'rs2b0t:multibox:railHidden';
     function setRailHidden(hidden: boolean): void {
         app.classList.toggle('mbx-rail-hidden', hidden);
@@ -203,6 +218,8 @@ function boot(): void {
     // keeps in slot order — so snapshot[i] is tile[i].
     function renderRail(): void {
         const snaps = controller.snapshot();
+        modeButton.disabled = snaps.length > 0;
+        main.classList.toggle('has-bots', snaps.length > 0);
         resources.setBotCount(snaps.length);
         const tiles = railTiles();
         if (tiles.length !== snaps.length) {

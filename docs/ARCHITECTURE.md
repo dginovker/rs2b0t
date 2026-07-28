@@ -57,7 +57,7 @@ The exceptions are the protocol const-enums (`ServerProt`, `ClientProt`,
 **The DOM is reachable only from the UI layer and the entrypoints** — `src/bot/ui/`,
 `src/bot/main.ts`, and the MultiBox view modules:
 
-> `DOM only in src/bot/ui/, main.ts, and src/bot/multibox/{DomSlotOps,ProfileChooser,VaultPrompt,main}.ts.`
+> `DOM only in src/bot/ui/, main.ts, and src/bot/multibox/{DomSlotOps,HeadlessSlotOps,ProfileChooser,VaultPrompt,main}.ts.`
 
 This is what keeps the bot logic headless, and therefore unit-testable: the 1303-test
 suite imports subsystem modules directly without a browser.
@@ -122,10 +122,13 @@ settings under a *box* id:
 |---|---|---|
 | A standalone `bot.html` tab | `''` | that tab's own `sessionStorage` |
 | A MultiBox slot iframe | `<account>` | the box prefix |
+| A headless MultiBox slot | `<account>` | its private runtime module and box prefix |
 
-The distinction matters because **same-origin iframes share one `sessionStorage`**.
+The distinction matters because **same-origin clients share one `sessionStorage`**.
 Without the box prefix, every slot on the wall would overwrite the others'
-credentials. The wall passes `?box=<account>` when it spawns each iframe.
+credentials and settings. The wall passes `?box=<account>` when it spawns each
+visual iframe and configures the same module-local box before constructing each
+headless runtime.
 
 ## Frame-gap insurance
 
@@ -159,5 +162,5 @@ the signature of synchronous blocking, or of awaiting a promise that is not an
 - [Scripting API](API.md) — the surface built on this
 - [Running locally](RUNNING.md) — building and deploying it
 - [World-walking](NAV.md) — the largest subsystem built on the adapter
-- [MultiBox](MULTIBOX.md#slots-and-iframes) — many clients in one tab
+- [MultiBox](MULTIBOX.md#visual-and-headless-slots) — many clients in one tab
 - [Dev and deploy](DEV.md) — build targets and how the client resolves its server

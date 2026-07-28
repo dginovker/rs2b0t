@@ -5,7 +5,22 @@
 //   - a MultiBox iframe         -> box '<account>' , isolated within the tab's
 //     shared sessionStorage (same-origin iframes share one sessionStorage)
 // The MultiBox passes ?box=<account> when it spawns each iframe.
+let configuredBoxId: string | null = null;
+
+/**
+ * Set the storage namespace for an embedded bot runtime that does not own the
+ * page URL (the headless MultiBox fleet loads each runtime as an ES module in
+ * the wall document). Module instances are isolated, so this value remains
+ * private to one bot even though every bot shares the same Window.
+ */
+export function configureBoxId(id: string): void {
+    configuredBoxId = id;
+}
+
 export function boxId(): string {
+    if (configuredBoxId !== null) {
+        return configuredBoxId;
+    }
     if (typeof location === 'undefined') {
         return '';
     }

@@ -33,6 +33,8 @@ mkdir -p "$DEST/bot"
 cp out/botclient.js out/botclient.js.map out/ondemandworker.js out/ondemandworker.js.map \
    out/navworker.js out/navworker.js.map out/multibox.js out/multibox.js.map \
    out/collision.lcnav.gz out/tinymidipcm.wasm "$DEST/bot/"
+mkdir -p "$DEST/bot/headless"
+cp -R out/headless/. "$DEST/bot/headless/"
 cp public-bot/bot.html "$DEST/index.html"
 cp public-bot/bot.html "$DEST/bot.html"
 cp public-bot/multibox.html "$DEST/multibox.html"
