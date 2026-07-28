@@ -13,6 +13,16 @@ import { isVisible, summarize } from './paramControls.js';
 import { el } from './dom.js';
 
 const SELECTED_SCRIPT_KEY = boxKey('selectedScript');
+const rendererEnabledKey = (): string => boxKey('rendererEnabled');
+const rendererFpsKey = (): string => boxKey('rendererFocusedFps');
+const FOCUSED_FPS_OPTIONS = [50, 30, 25, 20, 15, 10, 5, 1];
+
+export interface RendererControl {
+    enabled(): boolean;
+    setEnabled(enabled: boolean): void;
+    focusedFps(): number;
+    setFocusedFps(fps: number): void;
+}
 
 export default class BotPanel {
     private host: BotHostImpl;
@@ -38,7 +48,7 @@ export default class BotPanel {
 
     private lastRender = 0;
 
-    constructor(root: HTMLElement, host: BotHostImpl) {
+    constructor(root: HTMLElement, host: BotHostImpl, renderer?: RendererControl) {
         this.host = host;
 
         root.replaceChildren();
@@ -121,13 +131,26 @@ export default class BotPanel {
         logSection.appendChild(this.logBox);
         root.appendChild(logSection);
 
+        if (renderer) {
+            root.appendChild(this.buildRendererControls(renderer));
+        }
+
         ScriptRunner.onChange(() => {
             this.renderScriptControls();
             this.renderLog();
             this.renderSettings();
         });
 
-        host.addDrawListener(() => this.maybeRender());
+        host.addDrawListener(() => this.maybeRender(200));
+        if (renderer) {
+            // Renderer-off clients deliberately emit no draw events. Their panel
+            // still updates at a cheap 1 Hz from the untouched logical frame loop.
+            host.addFrameListener(() => {
+                if (!renderer.enabled()) {
+                    this.maybeRender(1000);
+                }
+            });
+        }
         this.render();
         this.ensureSelection();
         this.renderScriptControls();
@@ -333,9 +356,65 @@ export default class BotPanel {
         }
     }
 
-    private maybeRender(): void {
+    private buildRendererControls(renderer: RendererControl): HTMLElement {
+        const rendering = el('div', 'rs2b0t-section');
+        rendering.appendChild(sectionTitle('rendering'));
+
+        const rendererRow = el('label', 'rs2b0t-setting rs2b0t-setting-bool');
+        const rendererToggle = document.createElement('input');
+        rendererToggle.type = 'checkbox';
+        const savedEnabled = localStorage.getItem(rendererEnabledKey());
+        rendererToggle.checked = savedEnabled === null ? renderer.enabled() : savedEnabled !== '0';
+        const rendererLabel = el('span', 'rs2b0t-setting-label');
+        rendererLabel.textContent = 'game renderer';
+        rendererLabel.title = 'Stop drawing while the bot, script, connection, and complete scene keep running';
+        rendererRow.append(rendererToggle, rendererLabel);
+        rendering.appendChild(rendererRow);
+
+        const fpsRow = el('label', 'rs2b0t-setting');
+        const fpsLabel = el('span', 'rs2b0t-setting-label');
+        fpsLabel.textContent = 'focused FPS';
+        fpsLabel.title = 'Cap only drawing; the game and bot loops remain at full speed';
+        const fpsSelect = document.createElement('select');
+        fpsSelect.className = 'rs2b0t-input rs2b0t-render-fps';
+        for (const fps of FOCUSED_FPS_OPTIONS) {
+            const option = document.createElement('option');
+            option.value = String(fps);
+            option.textContent = String(fps);
+            fpsSelect.appendChild(option);
+        }
+        const savedFps = Number(localStorage.getItem(rendererFpsKey()));
+        const initialFps = FOCUSED_FPS_OPTIONS.includes(savedFps) ? savedFps : renderer.focusedFps();
+        fpsSelect.value = String(FOCUSED_FPS_OPTIONS.includes(initialFps) ? initialFps : 50);
+        fpsRow.append(fpsLabel, fpsSelect);
+        rendering.appendChild(fpsRow);
+
+        const note = el('div', 'rs2b0t-dim rs2b0t-render-note');
+        note.textContent = 'Rail previews stay at 1 FPS. Rendering never pauses the bot.';
+        rendering.appendChild(note);
+
+        const applyEnabled = (): void => {
+            renderer.setEnabled(rendererToggle.checked);
+            fpsSelect.disabled = !rendererToggle.checked;
+        };
+        rendererToggle.addEventListener('change', () => {
+            localStorage.setItem(rendererEnabledKey(), rendererToggle.checked ? '1' : '0');
+            applyEnabled();
+        });
+        fpsSelect.addEventListener('change', () => {
+            const fps = Number(fpsSelect.value);
+            localStorage.setItem(rendererFpsKey(), String(fps));
+            renderer.setFocusedFps(fps);
+        });
+
+        applyEnabled();
+        renderer.setFocusedFps(Number(fpsSelect.value));
+        return rendering;
+    }
+
+    private maybeRender(minimumIntervalMs: number): void {
         const now = performance.now();
-        if (now - this.lastRender < 200) {
+        if (now - this.lastRender < minimumIntervalMs) {
             return;
         }
 
