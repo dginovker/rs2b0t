@@ -82,6 +82,7 @@ const TEXTURE_AVERAGE = Uint16Array.of(
 const OCCLUDER_LEVELS = 4;
 
 export default class World {
+    private static activeContext: World | null = null;
     static lowMem: boolean = true;
 
     private static cameraSinX: number = 0;
@@ -138,6 +139,13 @@ export default class World {
     private readonly groundh: Int32Array[][];
     private readonly squares: (Square | null)[][][];
     private readonly occlusionCycle: Int32Array[][];
+    private readonly contextNumOccluders: Int32Array = new Int32Array(OCCLUDER_LEVELS);
+    private readonly contextOccluders: (Occlude | null)[][] = new TypedArray2d(OCCLUDER_LEVELS, 500, null);
+    private contextClick: boolean = false;
+    private contextClickX: number = 0;
+    private contextClickY: number = 0;
+    private contextGroundX: number = -1;
+    private contextGroundZ: number = -1;
 
     private dynamicCount: number = 0;
     private readonly dynamicSprites: (Sprite | null)[] = new TypedArray1d(5000, null);
@@ -154,10 +162,35 @@ export default class World {
         this.occlusionCycle = new Int32Array3d(maxLevel, maxTileX + 1, maxTileZ + 1);
         this.groundh = levelHeightmaps;
 
+        this.activateContext();
         this.resetMap();
     }
 
+    /** Switch the legacy renderer statics to this account's scene. */
+    activateContext(): void {
+        const previous = World.activeContext;
+        if (previous === this) {
+            return;
+        }
+        if (previous) {
+            previous.contextClick = World.click;
+            previous.contextClickX = World.clickX;
+            previous.contextClickY = World.clickY;
+            previous.contextGroundX = World.groundX;
+            previous.contextGroundZ = World.groundZ;
+        }
+        World.activeContext = this;
+        World.numOccluders = this.contextNumOccluders;
+        World.occluders = this.contextOccluders;
+        World.click = this.contextClick;
+        World.clickX = this.contextClickX;
+        World.clickY = this.contextClickY;
+        World.groundX = this.contextGroundX;
+        World.groundZ = this.contextGroundZ;
+    }
+
     resetMap(): void {
+        this.activateContext();
         for (let level: number = 0; level < this.maxTileLevel; level++) {
             for (let x: number = 0; x < this.maxTileX; x++) {
                 for (let z: number = 0; z < this.maxTileZ; z++) {
@@ -949,6 +982,7 @@ export default class World {
     }
 
     updateMousePicking(mouseX: number, mouseY: number): void {
+        this.activateContext();
         World.click = true;
         World.clickX = mouseX;
         World.clickY = mouseY;
@@ -957,6 +991,7 @@ export default class World {
     }
 
     renderAll(eyeX: number, eyeY: number, eyeZ: number, maxLevel: number, eyeYaw: number, eyePitch: number): void {
+        this.activateContext();
         if (eyeX < 0) {
             eyeX = 0;
         } else if (eyeX >= this.maxTileX * 128) {

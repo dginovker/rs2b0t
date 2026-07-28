@@ -10,24 +10,37 @@ bot starves. In a single tab they all hold full speed while that tab is visible.
 
 ## Contents
 
-- [Slots and iframes](#slots-and-iframes)
+- [Live clients and renderers](#live-clients-and-renderers)
 - [Profiles and the vault](#profiles-and-the-vault)
 - [Login coordination](#login-coordination)
+- [Large-fleet performance](#large-fleet-performance)
 - [Resource telemetry](#resource-telemetry)
 - [Viewers and the launcher](#viewers-and-the-launcher)
 
-## Slots and iframes
+## Live clients and renderers
 
-Each slot is an **iframe running the ordinary single-instance client** — the same
-`bot.html`, unmodified. The wall is a manager around them, not a different client.
-[`MultiBoxController`](../src/bot/multibox/MultiBoxController.ts) owns the model;
-[`DomSlotOps`](../src/bot/multibox/DomSlotOps.ts) owns the DOM.
+Every slot is the ordinary bot client and full bot panel. The focused client draws
+at full speed; rail clients keep their live previews at about 1 fps. Each runtime is
+an isolated dynamic module, while immutable client/config code and cache workers are
+shared across the wall instead of being duplicated in one iframe per account.
+
+The **Game renderer** checkbox below each bot's log is per account and persisted.
+Turning it off keeps that exact client, game socket, decoded state, script, and panel
+running while releasing its canvas surfaces, minimap, and rendered scene. Turning it
+back on rebuilds the scene from retained map/state data; it does not reconnect,
+re-login, or restart the script. An account saved with its renderer off starts on the
+compact path without first allocating visual resources.
+
+[`MultiBoxController`](../src/bot/multibox/MultiBoxController.ts) owns the shared
+model and [`DomSlotOps`](../src/bot/multibox/DomSlotOps.ts) owns the live DOM slots.
 
 A slot exposes a narrow handle rather than its internals:
 
 ```ts
 export interface SlotHandle {
     setRenderMode(mode: RenderMode): void;
+    setRendererEnabled(enabled: boolean): void;
+    startScript(name: string): void;
     setCredentials(username: string, password: string): void;
     setAutoLogin(on: boolean): void;
     setLoginCoordination(coordination: LoginCoordination | null): void;
@@ -37,22 +50,54 @@ export interface SlotHandle {
 
 Four details that are not guessable from the outside:
 
-- **Rail slots paint at ~1 fps; the focused slot draws every frame.** That is what
-  keeps a dozen bots affordable on a laptop. The rate is set per-iframe at runtime —
-  the standalone client keeps its own `RenderGate` default.
-- **Tiles carry a click-catching overlay** (`.mbx-hit`) above the iframe, because a
-  click that lands *in* the iframe goes to the game. The overlay is what lets clicking
-  a tile switch which bot is focused.
-- **Storage is boxed per account.** Same-origin iframes share one `sessionStorage`, so
-  every slot would otherwise overwrite the others' credentials — see
-  [per-instance storage](ARCHITECTURE.md#per-instance-storage). The wall passes
-  `?box=<account>`.
+- **Rail slots pump protocol state at 5 Hz and paint at ~1 fps; the focused slot
+  pumps and draws at 50 fps.** The logical client clock remains 50 Hz in both cases.
+- **Tiles carry a click-catching overlay** (`.mbx-hit`) so selecting or dragging a
+  tile does not send accidental input to the game canvas.
+- **Storage is boxed per account.** Same-origin clients share one `sessionStorage`,
+  so every slot would otherwise overwrite the others' credentials or settings — see
+  [per-instance storage](ARCHITECTURE.md#per-instance-storage).
 - `SlotStatus.player` is the logged-in character *once known*: a bot is added empty
   and has its account typed into its own panel, so the rail tile cannot show a name
   before that.
 
-Reordering slots preserves the client in each one. Rebuilding the iframe would drop
-the bot's session and force a re-login.
+Reordering changes CSS order without moving or rebuilding a live client. Focus and
+renderer changes likewise preserve the client object and its socket.
+
+## Large-fleet performance
+
+Renderer-off clients release per-account visual surfaces and modelled scenes. Large
+immutable client/config modules are parsed once, while each account still owns its
+mutable protocol, interface, inventory, script, map, and storage state. The fleet
+shares one on-demand cache worker and one navigation worker.
+
+The repeatable local-server benchmark is:
+
+```sh
+bun tools/multibox-perf-test.ts --base http://localhost:8890 \
+  --renderers off --bots 20 --seconds 60 --label renderers-off-20
+```
+
+It waits for all clients to enter the game and for every selected script to loop,
+then measures wall-clock CPU over the complete Chrome process tree, Linux PSS/RSS,
+event-loop delay, focus latency, logical game-clock rate, actual client-pump rate,
+server ticks, and script loops. It writes JSON plus a full-page screenshot under
+`out/`. Use `--renderers on` against the same build for the visual control run.
+
+For an active navigation check, the harness can also require every account to
+change tiles during the sample:
+
+```sh
+bun tools/multibox-perf-test.ts --base http://localhost:8890 \
+  --renderers off --bots 20 --seconds 120 --script TutorialBot \
+  --require-movement --label renderers-off-tutorial
+```
+
+The issue-99 local-server validation kept 20 renderer-off accounts running for
+600 seconds at 0.05 Chrome CPU cores and 490.7 MiB PSS. All accounts held a 50 Hz
+logical clock, 1.67 server ticks/s, running scripts, and login-stream generation
+1. A separate 120-second TutorialBot run moved every account 10–11 tiles with the
+same tick and connection invariants.
 
 ## Profiles and the vault
 
@@ -81,7 +126,7 @@ idle for 15 seconds — and every attempt refreshes that server-side TTL, so the
 cooldown is measured from the *latest* permit, not the first.
 
 [`LoginCoordinator`](../src/bot/multibox/LoginCoordinator.ts) hands out permits across
-every iframe in the wall to stay inside that budget:
+every client in the wall to stay inside that budget:
 
 ```ts
 export const LOGIN_BATCH_SIZE = 4;
@@ -107,7 +152,7 @@ counts its actual WebSocket application payload in both directions and publishes
 deltas to the wall, so direct production sockets are included even when they bypass
 the local proxy. HTTP assets, headers, and transport overhead are not counted. The
 card updates once per second by changing its own text only — it never reloads or
-reparents a bot iframe.
+reparents a bot client.
 
 Bot count and traffic are measured inside the browser, so they work on any wall. CPU
 and RAM come from the local proxy's `/__rs2b0t/resources`; a wall served straight from

@@ -1,18 +1,13 @@
-import type { Account, RenderMode, SlotHandle, SlotOps, SlotStatus } from './types.js';
+import type { EmbeddedBot, EmbeddedBotOptions } from '../embedded.js';
 import type { LoginCoordination } from '../runtime/LoginCoordination.js';
 import { paintThumbnail } from './ThumbnailPainter.js';
+import type { Account, RenderMode, SlotHandle, SlotOps, SlotStatus } from './types.js';
 
 const LOGICAL_W = 1100;
 const LOGICAL_H = 620;
-
-// Must match multibox.html: #mbx-rail width and .mbx-clip size.
 const RAIL_W = 264;
 const TILE_W = 236;
 const TILE_H = 155;
-
-// bot.html geometry: #rs2b0t-root is a flex row [game-wrap | 8px gap | 330px panel];
-// #game-stage is the largest 765:503 box centered in game-wrap. We derive where the
-// game canvas sits inside the 1100x620 client so a thumbnail can crop to just the game.
 const PANEL_W = 330;
 const ROOT_GAP = 8;
 const STAGE_W = 765;
@@ -23,193 +18,212 @@ const GAME_W = STAGE_W * STAGE_K;
 const GAME_H = STAGE_H * STAGE_K;
 const GAME_X = (WRAP_W - GAME_W) / 2;
 const GAME_Y = (LOGICAL_H - GAME_H) / 2;
-
-// cover-fit that game region into a rail tile (scaler transform-origin is top-left)
 const CROP_K = Math.max(TILE_W / GAME_W, TILE_H / GAME_H);
 const CROP_TX = TILE_W / 2 - (GAME_X + GAME_W / 2) * CROP_K;
 const CROP_TY = TILE_H / 2 - (GAME_Y + GAME_H / 2) * CROP_K;
 const CROP_TRANSFORM = `translate(${CROP_TX}px, ${CROP_TY}px) scale(${CROP_K})`;
-
-// docs/MULTIBOX.md#slots-and-iframes
-// Rail (background) slots paint at ~1fps so many bots stay cheap on a laptop; the
-// focused slot ignores this and draws every frame. Set per-iframe at runtime — the
-// standalone single-instance client keeps its own RenderGate default.
 const RAIL_BACKGROUND_INTERVAL_MS = 1000;
+
+interface EmbeddedModule {
+    createEmbeddedBot(options: EmbeddedBotOptions): EmbeddedBot;
+}
+
+let nextRuntimeId = 1;
 
 function railWidth(): number {
     return document.getElementById('mbx-rail')?.offsetWidth ?? RAIL_W;
 }
 
-interface Lcb {
-    client: { constructor: { loopCycle: number } };
-    reader: { ingame(): boolean; localPlayerName(): string | null };
-    renderGate: { drawn: number; backgroundIntervalMs: number };
-    runner: { state: string };
-    setRenderMode(mode: RenderMode): void;
-    setCredentials(u: string, p: string): void;
-    setAutoLogin(on: boolean): void;
-    setLoginCoordination(coordination: LoginCoordination | null): void;
+function node<K extends keyof HTMLElementTagNameMap>(tag: K, className: string): HTMLElementTagNameMap[K] {
+    const result = document.createElement(tag);
+    result.className = className;
+    return result;
 }
-interface LcbWindow extends Window { rs2b0t?: Lcb; }
 
 class DomSlotHandle implements SlotHandle {
     readonly el: HTMLDivElement;
 
-    private scaler: HTMLDivElement;
-    private iframe: HTMLIFrameElement;
-    private mirror: HTMLCanvasElement;
-    private mirrorTimer: number;
-    private win: LcbWindow | null = null;
-    private pending: Array<(l: Lcb) => void> = [];
+    private readonly scaler: HTMLDivElement;
+    private readonly clientRoot: HTMLDivElement;
+    private readonly canvas: HTMLCanvasElement;
+    private readonly overlay: HTMLCanvasElement;
+    private readonly panel: HTMLDivElement;
+    private readonly mirror: HTMLCanvasElement;
+    private readonly mirrorTimer: number;
+    private readonly pending: Array<(runtime: EmbeddedBot) => void> = [];
+    private runtime: EmbeddedBot | null = null;
     private destroyed = false;
     private mode: RenderMode = 'background';
-    private onResize = (): void => this.applyLayout();
+    private readonly onResize = (): void => this.applyLayout();
 
-    constructor(account: Account) {
-        this.el = document.createElement('div');
-        this.el.className = 'mbx-slot';
+    constructor(private readonly account: Account) {
+        this.el = node('div', 'mbx-slot');
         this.el.draggable = true;
 
-        const cap = document.createElement('div');
-        cap.className = 'mbx-cap';
-        const dot = document.createElement('span');
-        dot.className = 'mbx-dot';
-        const name = document.createElement('span');
-        name.className = 'mbx-name';
+        const cap = node('div', 'mbx-cap');
+        const dot = node('span', 'mbx-dot');
+        const name = node('span', 'mbx-name');
         name.textContent = account.username;
-        const close = document.createElement('button');
-        close.className = 'mbx-close';
+        const close = node('button', 'mbx-close');
         close.type = 'button';
         close.title = 'remove bot';
         close.textContent = '✕';
         cap.append(dot, name, close);
 
-        const body = document.createElement('div');
-        body.className = 'mbx-body';
-        const clip = document.createElement('div');
-        clip.className = 'mbx-clip';
-        this.scaler = document.createElement('div');
-        this.scaler.className = 'mbx-scaler';
-        this.iframe = document.createElement('iframe');
-        this.iframe.className = 'mbx-frame';
-        this.iframe.title = account.username;
-        const q = new URLSearchParams(location.search);
-        const forwarded = new URLSearchParams();
-        for (const k of ['nodeid', 'members'] as const) {
-            if (q.has(k)) {
-                forwarded.set(k, q.get(k)!);
-            }
-        }
-        // per-account storage namespace — isolates each iframe's creds/settings
-        // even though same-origin iframes share one sessionStorage (see box.ts)
-        forwarded.set('box', account.username);
-        const qs = forwarded.toString();
-        this.iframe.src = new URL('bot.html' + (qs ? `?${qs}` : ''), document.baseURI).href;
-        this.scaler.appendChild(this.iframe);
-        clip.appendChild(this.scaler);
+        const body = node('div', 'mbx-body');
+        const clip = node('div', 'mbx-clip');
+        this.scaler = node('div', 'mbx-scaler');
+        this.clientRoot = node('div', 'mbx-frame rs2b0t-root');
 
-        // The focused bot's live iframe is lifted over the main pane, so its rail
-        // tile mirrors that canvas instead — every bot stays visible in the rail.
-        this.mirror = document.createElement('canvas');
-        this.mirror.className = 'mbx-mirror';
+        const gameWrap = node('div', 'game-wrap');
+        const gameStage = node('div', 'game-stage');
+        this.canvas = node('canvas', 'game-canvas');
+        this.canvas.width = STAGE_W;
+        this.canvas.height = STAGE_H;
+        this.overlay = node('canvas', 'game-overlay');
+        this.overlay.width = STAGE_W;
+        this.overlay.height = STAGE_H;
+        const rendererOff = node('div', 'renderer-off');
+        rendererOff.innerHTML = '<strong>Renderer off</strong><span>bot, script, and connection still running</span>';
+        gameStage.append(this.canvas, this.overlay, rendererOff);
+        gameWrap.append(gameStage);
+
+        this.panel = node('div', 'bot-panel');
+        this.panel.textContent = 'loading bot runtime…';
+        this.clientRoot.append(gameWrap, this.panel);
+        this.scaler.append(this.clientRoot);
+        clip.append(this.scaler);
+
+        this.mirror = node('canvas', 'mbx-mirror');
         this.mirror.width = TILE_W;
         this.mirror.height = TILE_H;
-
-        // An iframe swallows clicks, so the rail would never see them; this overlay
-        // sits above it and lets a tile click switch which bot is active.
-        const hit = document.createElement('div');
-        hit.className = 'mbx-hit';
-
+        const hit = node('div', 'mbx-hit');
         body.append(clip, this.mirror, hit);
         this.el.append(cap, body);
+
         this.mirrorTimer = window.setInterval(this.paintMirror, 1000);
         this.applyLayout();
-        this.poll();
+        void this.load();
     }
 
     setRenderMode(mode: RenderMode): void {
         this.mode = mode;
-        this.whenReady(l => {
-            l.renderGate.backgroundIntervalMs = RAIL_BACKGROUND_INTERVAL_MS;
-            l.setRenderMode(mode);
+        this.withRuntime(runtime => {
+            runtime.renderGate.backgroundIntervalMs = RAIL_BACKGROUND_INTERVAL_MS;
+            runtime.setRenderMode(mode);
         });
         this.applyLayout();
     }
 
-    setCredentials(u: string, p: string): void {
-        this.whenReady(l => l.setCredentials(u, p));
+    setRendererEnabled(enabled: boolean): void {
+        this.withRuntime(runtime => {
+            void runtime.setRendererEnabled(enabled).catch(error => console.error('[rs2b0t] renderer transition failed', error));
+        });
+    }
+
+    startScript(name: string): void {
+        this.withRuntime(runtime => runtime.startScript(name));
+    }
+
+    setCredentials(username: string, password: string): void {
+        this.withRuntime(runtime => runtime.setCredentials(username, password));
     }
 
     setAutoLogin(on: boolean): void {
-        this.whenReady(l => l.setAutoLogin(on));
+        this.withRuntime(runtime => runtime.setAutoLogin(on));
     }
 
     setLoginCoordination(coordination: LoginCoordination | null): void {
-        this.whenReady(l => l.setLoginCoordination(coordination));
+        this.withRuntime(runtime => runtime.setLoginCoordination(coordination));
     }
 
     status(): SlotStatus {
-        const l = this.win?.rs2b0t;
-        if (!l) {
+        if (!this.runtime) {
             return { ready: false, ingame: false, player: null, loopCycle: 0, drawn: 0, scriptState: 'idle' };
         }
-        return { ready: true, ingame: l.reader.ingame(), player: l.reader.localPlayerName(), loopCycle: l.client.constructor.loopCycle, drawn: l.renderGate.drawn, scriptState: l.runner.state };
+        const snapshot = this.runtime.snapshot();
+        return {
+            ready: true,
+            ingame: snapshot.ingame,
+            player: snapshot.player,
+            tile: snapshot.tile,
+            loopCycle: snapshot.loopCycle,
+            drawn: this.runtime.renderGate.drawn,
+            scriptState: snapshot.scriptState,
+            tickCount: snapshot.tickCount,
+            tickMeanMs: snapshot.tickMeanMs,
+            scriptLoops: snapshot.scriptLoops,
+            clientFps: snapshot.clientFps,
+            rendererEnabled: snapshot.rendererEnabled,
+            streamGeneration: snapshot.streamGeneration
+        };
     }
 
     destroy(): void {
         this.destroyed = true;
         window.clearInterval(this.mirrorTimer);
         window.removeEventListener('resize', this.onResize);
+        this.runtime?.destroy();
+        this.runtime = null;
         this.el.remove();
     }
 
-    private paintMirror = (): void => {
+    private async load(): Promise<void> {
+        try {
+            const url = new URL('./embedded/embedded.js', import.meta.url);
+            url.searchParams.set('instance', `${nextRuntimeId++}-${this.account.username}`);
+            url.searchParams.set('build', process.env.BUILD_TIME ?? 'dev');
+            const module = (await import(url.href)) as EmbeddedModule;
+            if (this.destroyed) {
+                return;
+            }
+            this.runtime = module.createEmbeddedBot({
+                box: this.account.username,
+                username: this.account.username,
+                password: this.account.password,
+                autoLogin: false,
+                canvas: this.canvas,
+                overlay: this.overlay,
+                panel: this.panel,
+                presentation: this.clientRoot
+            });
+            for (const callback of this.pending.splice(0)) {
+                callback(this.runtime);
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.panel.textContent = `Bot runtime failed: ${message}`;
+            this.panel.classList.add('rs2b0t-banner-error');
+        }
+    }
+
+    private withRuntime(callback: (runtime: EmbeddedBot) => void): void {
+        if (this.runtime) {
+            callback(this.runtime);
+        } else {
+            this.pending.push(callback);
+        }
+    }
+
+    private readonly paintMirror = (): void => {
         if (this.mode !== 'focused' || railWidth() === 0) {
             return;
         }
-        const doc = this.iframe.contentDocument;
-        const game = doc?.getElementById('canvas') as HTMLCanvasElement | null;
-        const overlay = doc?.getElementById('overlay') as HTMLCanvasElement | null;
-        paintThumbnail(this.mirror.getContext('2d')!, game, overlay, TILE_W, TILE_H);
+        paintThumbnail(this.mirror.getContext('2d')!, this.canvas, this.overlay, TILE_W, TILE_H);
     };
-
-    private poll = (): void => {
-        if (this.destroyed) {
-            return;
-        }
-        const w = this.iframe.contentWindow as LcbWindow | null;
-        if (w?.rs2b0t) {
-            this.win = w;
-            const flush = this.pending;
-            this.pending = [];
-            for (const fn of flush) fn(w.rs2b0t);
-            return;
-        }
-        window.setTimeout(this.poll, 50);
-    };
-
-    private whenReady(fn: (l: Lcb) => void): void {
-        if (this.win?.rs2b0t) {
-            fn(this.win.rs2b0t);
-        } else {
-            this.pending.push(fn);
-        }
-    }
 
     private applyLayout(): void {
         const focused = this.mode === 'focused';
         this.el.classList.toggle('is-focused', focused);
         if (focused) {
-            // fill the main pane (viewport minus the rail), centered, whole client visible
             const mainW = window.innerWidth - railWidth();
             const mainH = window.innerHeight;
-            const k = Math.min(mainW / LOGICAL_W, mainH / LOGICAL_H);
-            const dx = (mainW - LOGICAL_W * k) / 2;
-            const dy = (mainH - LOGICAL_H * k) / 2;
-            this.scaler.style.transform = `translate(${dx}px, ${dy}px) scale(${k})`;
+            const scale = Math.min(mainW / LOGICAL_W, mainH / LOGICAL_H);
+            const dx = (mainW - LOGICAL_W * scale) / 2;
+            const dy = (mainH - LOGICAL_H * scale) / 2;
+            this.scaler.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
             window.addEventListener('resize', this.onResize);
         } else {
-            // rail thumbnail: crop the client to just the game viewport
             this.scaler.style.transform = CROP_TRANSFORM;
             window.removeEventListener('resize', this.onResize);
         }
@@ -221,17 +235,13 @@ function flexOrder(el: HTMLElement): number {
     return Number.isFinite(order) ? order : 0;
 }
 
-/**
- * Return rail slots in their visual flex order. Their DOM order deliberately
- * stays fixed because moving an iframe ancestor reloads its browsing context in
- * Firefox.
- */
+/** DOM order stays fixed because moving live clients can reset browser state. */
 export function orderedSlotElements(root: ParentNode): HTMLElement[] {
     return Array.from(root.querySelectorAll<HTMLElement>('.mbx-slot')).sort((a, b) => flexOrder(a) - flexOrder(b));
 }
 
 export class DomSlotOps implements SlotOps {
-    constructor(private railEl: HTMLElement, private beforeEl: HTMLElement) {}
+    constructor(private readonly railEl: HTMLElement, private readonly beforeEl: HTMLElement) {}
 
     spawn(account: Account): SlotHandle {
         const handle = new DomSlotHandle(account);
@@ -245,22 +255,15 @@ export class DomSlotOps implements SlotOps {
         const target = before as DomSlotHandle | null;
         const slots = orderedSlotElements(this.railEl);
         const fromIndex = slots.indexOf(moving.el);
-        if (fromIndex < 0 || target === moving) {
-            return;
-        }
-
+        if (fromIndex < 0 || target === moving) return;
         slots.splice(fromIndex, 1);
         const toIndex = target === null ? slots.length : slots.indexOf(target.el);
-        if (toIndex < 0) {
-            return;
-        }
+        if (toIndex < 0) return;
         slots.splice(toIndex, 0, moving.el);
         this.applyVisualOrder(slots);
     }
 
     private applyVisualOrder(slots: HTMLElement[]): void {
-        // Negative values keep every slot before the add/resources controls,
-        // whose default flex order is zero.
         const first = -slots.length;
         slots.forEach((slot, index) => {
             slot.style.order = String(first + index);

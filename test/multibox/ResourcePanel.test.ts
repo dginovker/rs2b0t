@@ -350,7 +350,7 @@ describe('ResourcePanel', () => {
         expect(nodes.traffic.textContent).toBe('↓ 1 KB/s  ↑ 512 B/s');
     });
 
-    test('refreshes only provided nodes and preserves a bot iframe exactly', async () => {
+    test('refreshes only provided nodes and preserves a bot client exactly', async () => {
         const iframe = document.createElement('iframe');
         iframe.src = '/bot.html?box=alice';
         document.body.appendChild(iframe);

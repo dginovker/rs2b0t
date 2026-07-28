@@ -1,6 +1,6 @@
 import { boxKey } from './box.js';
 
-// Per-instance: sessionStorage (per tab; per iframe in the MultiBox via ?box=),
+// Per-instance: sessionStorage (per tab; per embedded MultiBox runtime via box),
 // never the origin-shared localStorage — else every tab logs in as whichever
 // tab saved last.
 const hasStorage = typeof sessionStorage !== 'undefined';

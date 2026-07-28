@@ -9,6 +9,9 @@
         /* app = a big ACTIVE pane on the left + a fixed-width rail of live thumbnails on the right */
         #mbx-app { display: flex; height: 100vh; }
         #mbx-main { flex: 1 1 auto; min-width: 0; position: relative; background: #0a0a0a; }
+        #mbx-empty { position: absolute; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center; color: #666; }
+        #mbx-main.has-bots #mbx-empty { display: none; }
+        #mbx-empty strong { color: #5be05b; font-size: 16px; }
         /* RAIL_W below must match RAIL_W in DomSlotOps.ts (focused-slot geometry depends on it) */
         #mbx-rail { flex: 0 0 264px; width: 264px; box-sizing: border-box; height: 100vh; overflow-y: auto; overflow-x: hidden; padding: 12px; background: #111; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 10px; }
 
@@ -31,12 +34,15 @@
         .mbx-clip { position: absolute; inset: 0; overflow: hidden; background: #000; }
         .mbx-scaler { width: 1100px; height: 620px; transform-origin: top left; }
         .mbx-frame { width: 1100px; height: 620px; border: 0; display: block; }
-        /* shown only for the focused bot, whose own iframe is busy filling the main pane */
+        /* bot.html uses viewport height standalone; an embedded client instead
+           lives in the wall's fixed 1100x620 logical box. */
+        .mbx-frame.rs2b0t-root, .mbx-frame .bot-panel { height: 620px; }
+        /* shown only for the focused bot, whose live canvas fills the main pane */
         .mbx-mirror { position: absolute; inset: 0; display: none; }
-        /* the iframe swallows clicks, so this overlay is what makes a tile clickable */
+        /* keep tile selection and drag gestures separate from the game canvas */
         .mbx-hit { position: absolute; inset: 0; z-index: 3; }
 
-        /* Focused: only the clip (holding the live iframe) is lifted over the main pane.
+        /* Focused: only the clip (holding the live client) is lifted over the main pane.
            It is never reparented, so the game session survives the switch — and the tile
            keeps its place in the rail, mirroring that canvas. */
         .mbx-slot.is-focused .mbx-clip { position: fixed; top: 0; left: 0; bottom: 0; right: 264px; width: auto; height: auto; z-index: 40; }
@@ -79,11 +85,12 @@
         .mbx-chooser-form { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #2c2c2c; padding-top: 8px; }
         .mbx-chooser-form input { background: #000; border: 1px solid #333; color: #ddd; padding: 5px 7px; border-radius: 3px; font: inherit; }
         .mbx-chooser-form button { background: #07330a; border: 1px solid #04A800; color: #5be05b; padding: 5px 7px; border-radius: 3px; cursor: pointer; font: inherit; }
+
     </style>
 </head>
 <body>
     <div id="mbx-app">
-        <div id="mbx-main"></div>
+        <div id="mbx-main"><div id="mbx-empty"><strong>MultiBox</strong><span>Add a profile to start a bot.</span></div></div>
         <div id="mbx-rail">
             <div id="mbx-add" class="mbx-addtile">+ add bot</div>
             <div id="mbx-resources" class="mbx-resources">

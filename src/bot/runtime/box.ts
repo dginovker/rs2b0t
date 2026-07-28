@@ -2,10 +2,25 @@
 // Per-instance storage namespace. Every bot instance keeps its own credentials
 // and settings under a "box" id so nothing bleeds between instances:
 //   - a standalone bot.html tab -> box '' , isolated by its own sessionStorage
-//   - a MultiBox iframe         -> box '<account>' , isolated within the tab's
-//     shared sessionStorage (same-origin iframes share one sessionStorage)
-// The MultiBox passes ?box=<account> when it spawns each iframe.
+//   - an embedded MultiBox bot  -> box '<account>', isolated within the tab's
+//     shared sessionStorage
+// MultiBox configures the box before constructing each private runtime module.
+let configuredBoxId: string | null = null;
+
+/**
+ * Set the storage namespace for an embedded bot runtime that does not own the
+ * page URL (the embedded MultiBox fleet loads each runtime as an ES module in
+ * the wall document). Module instances are isolated, so this value remains
+ * private to one bot even though every bot shares the same Window.
+ */
+export function configureBoxId(id: string): void {
+    configuredBoxId = id;
+}
+
 export function boxId(): string {
+    if (configuredBoxId !== null) {
+        return configuredBoxId;
+    }
     if (typeof location === 'undefined') {
         return '';
     }

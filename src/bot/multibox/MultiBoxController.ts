@@ -71,6 +71,20 @@ export class MultiBoxController {
         this.applyModes();
     }
 
+    setRendererEnabled(id: number, enabled: boolean): boolean {
+        const slot = this.slots.find(item => item.id === id);
+        if (!slot) return false;
+        slot.handle.setRendererEnabled(enabled);
+        return true;
+    }
+
+    startScript(id: number, name: string): boolean {
+        const slot = this.slots.find(item => item.id === id);
+        if (!slot) return false;
+        slot.handle.startScript(name);
+        return true;
+    }
+
     move(id: number, toIndex: number): boolean {
         const fromIndex = this.slots.findIndex(s => s.id === id);
         if (fromIndex < 0 || !Number.isSafeInteger(toIndex)) {

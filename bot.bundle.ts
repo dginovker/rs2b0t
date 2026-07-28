@@ -96,4 +96,27 @@ for (const [entry, output] of entrypoints) {
     fs.writeFileSync(`out/${output}.map`, sourcemap);
 }
 
+// Embedded instances are imported with a unique query string so each account
+// receives private bot-runtime singletons in one Window. Keep the large client
+// and config graph in a query-free shared chunk: parsing and immutable config
+// data are then paid once for the whole fleet instead of once per account.
+const embeddedOutdir = 'out/embedded';
+fs.rmSync(embeddedOutdir, { recursive: true, force: true });
+const embeddedBuild = await Bun.build({
+    entrypoints: ['src/bot/embedded.ts', 'src/client/Client.ts'],
+    outdir: embeddedOutdir,
+    naming: {
+        entry: '[name].[ext]',
+        chunk: 'chunks/[name]-[hash].[ext]'
+    },
+    splitting: true,
+    sourcemap: 'external',
+    define,
+    minify: prod
+});
+if (!embeddedBuild.success) {
+    embeddedBuild.logs.forEach((x: unknown) => console.log(x));
+    process.exit(1);
+}
+
 console.log(`bot bundle built (${prod ? 'prod' : 'dev'}): out/botclient.js`);

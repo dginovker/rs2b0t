@@ -1,17 +1,26 @@
 import { Client } from '#/client/Client.js';
+import { sleep } from '#/util/JsUtil.js';
 import { WorkerClock } from '#/util/WorkerClock.js';
 
 import { BotHost } from './BotHost.js';
 import { RenderGate } from './runtime/RenderGate.js';
 
 export default class BotClient extends Client {
-    constructor(nodeid: number, lowmem: boolean, members: boolean) {
-        super(nodeid, lowmem, members);
+    constructor(nodeid: number, lowmem: boolean, members: boolean, targetCanvas?: HTMLCanvasElement, sharedRealm: boolean = false) {
+        super(nodeid, lowmem, members, targetCanvas, sharedRealm);
         BotHost.attach(this);
     }
 
     protected override async frameDelay(ms: number): Promise<void> {
-        await WorkerClock.sleep(ms);
+        if (this.sharedRealm) {
+            await sleep(ms);
+        } else {
+            await WorkerClock.sleep(ms);
+        }
+    }
+
+    get pumpFps(): number {
+        return this.fps;
     }
 
     override async mainloop(): Promise<void> {
@@ -21,7 +30,7 @@ export default class BotClient extends Client {
 
     override async mainredraw(): Promise<void> {
         const now = performance.now();
-        if (!RenderGate.shouldDraw(now)) {
+        if (!this.rendererEnabled || !RenderGate.shouldDraw(now)) {
             return;
         }
         await super.mainredraw();

@@ -15,9 +15,17 @@ export interface SlotStatus {
     // the logged-in character, once known — a bot is added empty and gets its
     // account typed into its own panel, so this is what the rail tile shows
     player: string | null;
+    tile?: { x: number; z: number; level: number } | null;
     loopCycle: number;
     drawn: number;
     scriptState: string;
+    // Optional runtime diagnostics used by the repeatable MultiBox load harness.
+    tickCount?: number;
+    tickMeanMs?: number;
+    scriptLoops?: number;
+    clientFps?: number;
+    rendererEnabled?: boolean;
+    streamGeneration?: number;
 }
 
 export interface SlotSnapshot extends SlotStatus {
@@ -29,6 +37,8 @@ export interface SlotSnapshot extends SlotStatus {
 
 export interface SlotHandle {
     setRenderMode(mode: RenderMode): void;
+    setRendererEnabled(enabled: boolean): void;
+    startScript(name: string): void;
     setCredentials(username: string, password: string): void;
     setAutoLogin(on: boolean): void;
     setLoginCoordination(coordination: LoginCoordination | null): void;

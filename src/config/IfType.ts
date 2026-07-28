@@ -347,6 +347,41 @@ export default class IfType {
         this.spriteCache = null;
     }
 
+    /**
+     * Make a cheap per-account view over immutable interface definitions.
+     * Server packets mutate component scalars and inventory arrays, so those
+     * writes must not leak between embedded clients sharing the config module.
+     */
+    static cloneState(base: IfType[]): IfType[] {
+        const state = new Array<IfType>(base.length);
+        for (let id = 0; id < base.length; id++) {
+            const definition = base[id];
+            if (!definition) {
+                continue;
+            }
+            const component = Object.create(definition) as IfType;
+            if (definition.linkObjType) {
+                component.linkObjType = definition.linkObjType.slice();
+            }
+            if (definition.linkObjNumber) {
+                component.linkObjNumber = definition.linkObjNumber.slice();
+            }
+            state[id] = component;
+        }
+        return state;
+    }
+
+    /** Keep packet-mutated own state while swapping in richer definitions. */
+    static rebaseState(state: IfType[], base: IfType[]): void {
+        for (let id = 0; id < state.length; id++) {
+            const component = state[id];
+            const definition = base[id];
+            if (component && definition) {
+                Object.setPrototypeOf(component, definition);
+            }
+        }
+    }
+
     swapSlots(src: number, dst: number) {
         if (!this.linkObjType || !this.linkObjNumber) {
             return;

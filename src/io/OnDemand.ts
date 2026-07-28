@@ -27,13 +27,15 @@ export default class OnDemand extends OnDemandProvider {
     message: string = '';
     cycle: number = 0;
     failCount: number = 0;
-    worker: Worker | null = null;
+    worker: Worker | MessagePort | null = null;
     private lastIngame: boolean = false;
     private workerMessageId: number = 0;
     private workerAcks: Map<number, () => void> = new Map();
+    private readonly shareWorker: boolean;
 
-    constructor(versionlist: JagFile, app: Client) {
+    constructor(versionlist: JagFile, app: Client, shareWorker: boolean = false) {
         super();
+        this.shareWorker = shareWorker;
 
         const version: string[] = ['model_version', 'anim_version', 'midi_version', 'map_version'];
         for (let i = 0; i < 4; i++) {
@@ -131,7 +133,11 @@ export default class OnDemand extends OnDemandProvider {
     stop() {
         this.running = false;
         this.worker?.postMessage({ type: 'stop' });
-        this.worker?.terminate();
+        if (this.worker instanceof Worker) {
+            this.worker.terminate();
+        } else {
+            this.worker?.close();
+        }
         this.worker = null;
         for (const resolve of this.workerAcks.values()) {
             resolve();
@@ -184,7 +190,7 @@ export default class OnDemand extends OnDemandProvider {
     }
 
     getModelUse(id: number) {
-        return this.modelUse[id] & 0xFF;
+        return this.modelUse[id] & 0xff;
     }
 
     isMidiJingle(id: number) {
@@ -290,7 +296,22 @@ export default class OnDemand extends OnDemandProvider {
             return;
         }
 
-        const worker = new Worker(new URL('./ondemandworker.js', import.meta.url), { type: 'module' });
+        const configuredBase = (globalThis as typeof globalThis & { __rs2b0tAssetBase?: string }).__rs2b0tAssetBase;
+        const workerUrl = new URL('ondemandworker.js', configuredBase ?? import.meta.url);
+        workerUrl.searchParams.set('v', process.env.BUILD_TIME ?? 'dev');
+        let worker: Worker | MessagePort;
+        if (this.shareWorker && typeof SharedWorker !== 'undefined') {
+            try {
+                const shared = new SharedWorker(workerUrl, { type: 'module', name: 'rs2b0t-ondemand' });
+                worker = shared.port;
+                worker.start();
+            } catch (error) {
+                console.warn('[rs2b0t] shared cache worker unavailable; using a private worker', error);
+                worker = new Worker(workerUrl, { type: 'module' });
+            }
+        } else {
+            worker = new Worker(workerUrl, { type: 'module' });
+        }
         this.worker = worker;
         this.lastIngame = this.app.ingame;
 
@@ -319,13 +340,18 @@ export default class OnDemand extends OnDemandProvider {
             }
         };
 
-        worker.onerror = (event: ErrorEvent): void => {
-            console.error(event.message);
+        const workerError = (message: string): void => {
+            console.error(message);
             for (const resolve of this.workerAcks.values()) {
                 resolve();
             }
             this.workerAcks.clear();
         };
+        if (worker instanceof Worker) {
+            worker.onerror = (event: ErrorEvent): void => workerError(event.message);
+        } else {
+            worker.onmessageerror = (): void => workerError('shared cache worker message failed');
+        }
 
         worker.postMessage({
             type: 'init',
@@ -358,6 +384,9 @@ export default class OnDemand extends OnDemandProvider {
 
     private receiveCompleted(archive: number, file: number, urgent: boolean, data: ArrayBuffer | null): void {
         let req = this.findRequest(archive, file);
+        if (!req && this.shareWorker) {
+            return;
+        }
         if (!req) {
             req = new OnDemandRequest();
         }

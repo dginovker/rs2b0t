@@ -7,7 +7,7 @@ import JagFile from '#/io/JagFile.js';
 import Packet from '#/io/Packet.js';
 import { TypedArray1d, TypedArray2d } from '#/util/Arrays.js';
 import { downloadUrl, sleep } from '#/util/JsUtil.js';
-import { canvas, saveDataURL } from '#/graphics/Canvas.js';
+import { saveDataURL } from '#/graphics/Canvas.js';
 import PixMap from '#/graphics/PixMap.js';
 import WorldMapFont from '#/mapview/WorldMapFont.js';
 
@@ -169,10 +169,14 @@ export class MapView extends GameShell {
         'Spice Shop'
     ];
 
-    constructor() {
-        super();
+    constructor(targetCanvas?: HTMLCanvasElement) {
+        super(false, targetCanvas);
 
         this.run();
+    }
+
+    public activateRaster(): void {
+        this.drawArea?.setPixels();
     }
 
     override async maininit(): Promise<void> {
@@ -180,7 +184,7 @@ export class MapView extends GameShell {
         this.overviewX = this.sWid - this.overviewWidth - 5;
         this.overviewY = this.sHei - this.overviewHeight - 20;
         this.fullredraw = true;
-        canvas.style.cursor = 'grab';
+        this.canvas.style.cursor = 'grab';
 
         const worldmap: JagFile = await this.loadWorldmap();
 
@@ -1826,7 +1830,7 @@ export class MapView extends GameShell {
         } else {
             this.nextMouseClickButton = 1;
             this.mouseButton = 1;
-            canvas.style.cursor = 'grabbing';
+            this.canvas.style.cursor = 'grabbing';
             this.dragging = true;
         }
 
@@ -1834,7 +1838,7 @@ export class MapView extends GameShell {
 
     override mouseUp(_x: number, _y: number, _e: MouseEvent) {
         this.dragging = false;
-        canvas.style.cursor = 'grab';
+        this.canvas.style.cursor = 'grab';
 
         this.mouseX = -1;
         this.mouseY = -1;
@@ -1879,7 +1883,7 @@ export class MapView extends GameShell {
 
     override windowMouseUp(_e: MouseEvent) {
         this.dragging = false;
-        canvas.style.cursor = 'grab';
+        this.canvas.style.cursor = 'grab';
 
         this.mouseX = -1;
         this.mouseY = -1;
@@ -1891,7 +1895,7 @@ export class MapView extends GameShell {
 
     override windowMouseMove(e: MouseEvent) {
         if (this.dragging) {
-            const rect = canvas.getBoundingClientRect();
+            const rect = this.canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) | 0;
             const y = (e.clientY - rect.top) | 0;
 

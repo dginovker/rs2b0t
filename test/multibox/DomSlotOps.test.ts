@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe('DomSlotOps', () => {
-    test('reorders visually without moving iframe ancestors in the DOM', () => {
+    test('reorders visually without moving live client roots in the DOM', () => {
         const rail = document.getElementById('rail')!;
         const add = document.getElementById('add')!;
         const ops = new DomSlotOps(rail, add);
@@ -28,12 +28,12 @@ describe('DomSlotOps', () => {
         handles.push(alice, bob, carol);
 
         const originalDomOrder = Array.from(rail.querySelectorAll<HTMLElement>('.mbx-slot'));
-        const originalFrames = originalDomOrder.map(slot => slot.querySelector('iframe'));
+        const originalClients = originalDomOrder.map(slot => slot.querySelector('.rs2b0t-root'));
 
         ops.move(carol, alice);
 
         expect(Array.from(rail.querySelectorAll('.mbx-slot'))).toEqual(originalDomOrder);
-        expect(originalDomOrder.map(slot => slot.querySelector('iframe'))).toEqual(originalFrames);
+        expect(originalDomOrder.map(slot => slot.querySelector('.rs2b0t-root'))).toEqual(originalClients);
         expect(orderedSlotElements(rail)).toEqual([originalDomOrder[2], originalDomOrder[0], originalDomOrder[1]]);
 
         ops.move(carol, null);
@@ -55,7 +55,9 @@ describe('DomSlotOps', () => {
         const carol = ops.spawn({ username: 'carol', password: '' });
         handles.push(carol);
 
-        const carolEl = Array.from(rail.querySelectorAll<HTMLElement>('.mbx-slot')).find(slot => slot.querySelector('iframe')?.title === 'carol')!;
+        const carolEl = Array.from(rail.querySelectorAll<HTMLElement>('.mbx-slot')).find(
+            slot => slot.querySelector('.mbx-name')?.textContent === 'carol'
+        )!;
         expect(orderedSlotElements(rail)).toEqual([bobEl, aliceEl, carolEl]);
     });
 });

@@ -34,7 +34,16 @@ if (typeof document !== 'undefined' && document.getElementById('canvas')) {
 
     const panelRoot = document.getElementById('bot-panel');
     if (panelRoot) {
-        new BotPanel(panelRoot, BotHost);
+        new BotPanel(panelRoot, BotHost, {
+            enabled: () => client.rendererEnabled,
+            setEnabled: async enabled => {
+                if (!enabled || client.rendererEnabled) {
+                    document.body.classList.toggle('rs2b0t-renderer-off', !enabled);
+                }
+                await client.setRendererEnabled(enabled);
+                document.body.classList.toggle('rs2b0t-renderer-off', !client.rendererEnabled);
+            }
+        });
     }
 
     const overlayCanvas = document.getElementById('overlay');
@@ -73,6 +82,9 @@ if (typeof document !== 'undefined' && document.getElementById('canvas')) {
         router: ActionRouter, scheduler: Scheduler,
         renderGate: RenderGate,
         setRenderMode: (mode: RenderMode) => RenderGate.setMode(mode),
+        setRendererEnabled: (enabled: boolean) => client.setRendererEnabled(enabled),
+        rendererEnabled: () => client.rendererEnabled,
+        streamGeneration: () => client.streamGeneration,
         setCredentials: (u: string, p: string) => AutoRelogin.setCredentials(u, p),
         setAutoLogin: (on: boolean) => AutoRelogin.setAutoLogin(on),
         setLoginCoordination: (coordination: LoginCoordination | null) => AutoRelogin.setLoginCoordination(coordination),

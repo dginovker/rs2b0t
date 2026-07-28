@@ -1,6 +1,5 @@
 import { CanvasEnabledKeys, KeyCodes } from '#/client/KeyCodes.js';
 
-import { canvas, canvas2d } from '#/graphics/Canvas.js';
 import Pix3D from '#/dash3d/Pix3D.js';
 import PixMap from '#/graphics/PixMap.js';
 
@@ -49,6 +48,11 @@ export default abstract class GameShell {
     private readonly touchEndHandler = (e: TouchEvent): void => {
         e.preventDefault();
     };
+    private readonly windowMouseUpHandler = (e: MouseEvent): void => this.windowMouseUp(e);
+    private readonly windowMouseMoveHandler = (e: MouseEvent): void => this.windowMouseMove(e);
+
+    protected readonly canvas: HTMLCanvasElement;
+    protected readonly canvas2d: CanvasRenderingContext2D;
 
     protected async maininit() { }
     protected mainquit() { }
@@ -59,61 +63,71 @@ export default abstract class GameShell {
     }
     protected refresh() { }
 
-    constructor(resizetoFit: boolean = false) {
-        canvas.tabIndex = -1;
-        canvas2d.fillStyle = 'black';
-        canvas2d.fillRect(0, 0, canvas.width, canvas.height);
+    constructor(resizetoFit: boolean = false, targetCanvas?: HTMLCanvasElement) {
+        this.canvas = targetCanvas ?? (document.getElementById('canvas') as HTMLCanvasElement | null) ?? document.createElement('canvas');
+        const context = this.canvas.getContext('2d', { desynchronized: false, alpha: false });
+        if (!context) {
+            throw new Error('2D canvas context unavailable');
+        }
+        this.canvas2d = context;
+        this.canvas.tabIndex = -1;
+        this.canvas2d.fillStyle = 'black';
+        this.canvas2d.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         this.resizeToFit = resizetoFit;
         if (this.resizeToFit) {
             this.resize(window.innerWidth, window.innerHeight);
         } else {
-            this.resize(canvas.width, canvas.height);
+            this.resize(this.canvas.width, this.canvas.height);
         }
     }
 
     protected get sWid(): number {
-        return canvas.width;
+        return this.canvas.width;
     }
 
     protected get sHei(): number {
-        return canvas.height;
+        return this.canvas.height;
     }
 
     protected resize(width: number, height: number) {
-        canvas.width = width;
-        canvas.height = height;
-        this.drawArea = new PixMap(width, height);
+        this.canvas.width = width;
+        this.canvas.height = height;
+        this.drawArea = this.createPixMap(width, height);
         Pix3D.setRenderClipping();
+    }
+
+    protected createPixMap(width: number, height: number): PixMap {
+        return new PixMap(width, height, this.canvas2d);
     }
 
     async run() {
         window.addEventListener('resize', this.resizeHandler, false);
 
-        canvas.onfocus = this.onfocus.bind(this);
-        canvas.onblur = this.onblur.bind(this);
+        this.canvas.onfocus = this.onfocus.bind(this);
+        this.canvas.onblur = this.onblur.bind(this);
 
-        canvas.onkeydown = this.onkeydown.bind(this);
-        canvas.onkeyup = this.onkeyup.bind(this);
+        this.canvas.onkeydown = this.onkeydown.bind(this);
+        this.canvas.onkeyup = this.onkeyup.bind(this);
 
-        canvas.onmousedown = this.onmousedown.bind(this);
-        canvas.onpointerdown = this.onpointerdown.bind(this);
-        canvas.onmouseup = this.onmouseup.bind(this);
-        canvas.onpointerup = this.onpointerup.bind(this);
-        canvas.onpointerenter = this.onpointerenter.bind(this);
-        canvas.onpointerleave = this.onpointerleave.bind(this);
-        canvas.onpointermove = this.onpointermove.bind(this);
-        window.onmouseup = this.windowMouseUp.bind(this);
-        window.onmousemove = this.windowMouseMove.bind(this);
+        this.canvas.onmousedown = this.onmousedown.bind(this);
+        this.canvas.onpointerdown = this.onpointerdown.bind(this);
+        this.canvas.onmouseup = this.onmouseup.bind(this);
+        this.canvas.onpointerup = this.onpointerup.bind(this);
+        this.canvas.onpointerenter = this.onpointerenter.bind(this);
+        this.canvas.onpointerleave = this.onpointerleave.bind(this);
+        this.canvas.onpointermove = this.onpointermove.bind(this);
+        window.addEventListener('mouseup', this.windowMouseUpHandler);
+        window.addEventListener('mousemove', this.windowMouseMoveHandler);
 
         if (this.isTouchDevice) {
-            canvas.style.touchAction = 'pinch-zoom';
-            canvas.addEventListener('touchend', this.touchEndHandler, { passive: false });
+            this.canvas.style.touchAction = 'pinch-zoom';
+            this.canvas.addEventListener('touchend', this.touchEndHandler, { passive: false });
         }
 
         // suppress the browser menu over the game canvas only — the rest of the
         // page (e.g. the bot panel) stays right-clickable for inspect/devtools
-        canvas.oncontextmenu = (e: MouseEvent): void => {
+        this.canvas.oncontextmenu = (e: MouseEvent): void => {
             e.preventDefault();
         };
 
@@ -230,21 +244,21 @@ export default abstract class GameShell {
         this.mainquit();
 
         window.removeEventListener('resize', this.resizeHandler, false);
-        canvas.onfocus = null;
-        canvas.onblur = null;
-        canvas.onkeydown = null;
-        canvas.onkeyup = null;
-        canvas.onmousedown = null;
-        canvas.onpointerdown = null;
-        canvas.onmouseup = null;
-        canvas.onpointerup = null;
-        canvas.onpointerenter = null;
-        canvas.onpointerleave = null;
-        canvas.onpointermove = null;
-        canvas.removeEventListener('touchend', this.touchEndHandler);
-        canvas.oncontextmenu = null;
-        window.onmouseup = null;
-        window.onmousemove = null;
+        this.canvas.onfocus = null;
+        this.canvas.onblur = null;
+        this.canvas.onkeydown = null;
+        this.canvas.onkeyup = null;
+        this.canvas.onmousedown = null;
+        this.canvas.onpointerdown = null;
+        this.canvas.onmouseup = null;
+        this.canvas.onpointerup = null;
+        this.canvas.onpointerenter = null;
+        this.canvas.onpointerleave = null;
+        this.canvas.onpointermove = null;
+        this.canvas.removeEventListener('touchend', this.touchEndHandler);
+        this.canvas.oncontextmenu = null;
+        window.removeEventListener('mouseup', this.windowMouseUpHandler);
+        window.removeEventListener('mousemove', this.windowMouseMoveHandler);
     }
 
     protected setFramerate(rate: number) {
@@ -272,25 +286,25 @@ export default abstract class GameShell {
         const height: number = this.sHei;
 
         if (this.fullredraw) {
-            canvas2d.fillStyle = 'black';
-            canvas2d.fillRect(0, 0, width, height);
+            this.canvas2d.fillStyle = 'black';
+            this.canvas2d.fillRect(0, 0, width, height);
             this.fullredraw = false;
         }
 
         const y: number = height / 2 - 18;
 
-        canvas2d.strokeStyle = 'rgb(140, 17, 17)';
-        canvas2d.strokeRect(((width / 2) | 0) - 152, y, 304, 34);
-        canvas2d.fillStyle = 'rgb(140, 17, 17)';
-        canvas2d.fillRect(((width / 2) | 0) - 150, y + 2, progress * 3, 30);
+        this.canvas2d.strokeStyle = 'rgb(140, 17, 17)';
+        this.canvas2d.strokeRect(((width / 2) | 0) - 152, y, 304, 34);
+        this.canvas2d.fillStyle = 'rgb(140, 17, 17)';
+        this.canvas2d.fillRect(((width / 2) | 0) - 150, y + 2, progress * 3, 30);
 
-        canvas2d.fillStyle = 'black';
-        canvas2d.fillRect(((width / 2) | 0) - 150 + progress * 3, y + 2, 300 - progress * 3, 30);
+        this.canvas2d.fillStyle = 'black';
+        this.canvas2d.fillRect(((width / 2) | 0) - 150 + progress * 3, y + 2, 300 - progress * 3, 30);
 
-        canvas2d.font = 'bold 13px helvetica, sans-serif';
-        canvas2d.textAlign = 'center';
-        canvas2d.fillStyle = 'white';
-        canvas2d.fillText(message, (width / 2) | 0, y + 22);
+        this.canvas2d.font = 'bold 13px helvetica, sans-serif';
+        this.canvas2d.textAlign = 'center';
+        this.canvas2d.fillStyle = 'white';
+        this.canvas2d.fillText(message, (width / 2) | 0, y + 22);
 
         await sleep(5);
     }
@@ -405,10 +419,10 @@ export default abstract class GameShell {
         this.mouseY = y;
     }
 
-    protected windowMouseUp(e: MouseEvent) {
+    protected windowMouseUp(_e: MouseEvent) {
     }
 
-    protected windowMouseMove(e: MouseEvent) {
+    protected windowMouseMove(_e: MouseEvent) {
     }
 
     private onkeydown(e: KeyboardEvent) {
@@ -566,7 +580,7 @@ export default abstract class GameShell {
         const fixedWidth: number = this.sWid;
         const fixedHeight: number = this.sHei;
 
-        const canvasBounds: DOMRect = canvas.getBoundingClientRect();
+        const canvasBounds: DOMRect = this.canvas.getBoundingClientRect();
         const clickX = e.clientX - canvasBounds.left;
         const clickY = e.clientY - canvasBounds.top;
         let x = 0;
@@ -597,8 +611,8 @@ export default abstract class GameShell {
             x = ((clickX - offsetX) * scaleX) | 0;
             y = ((clickY - offsetY) * scaleY) | 0;
         } else {
-            const scaleX: number = canvas.width / canvasBounds.width;
-            const scaleY: number = canvas.height / canvasBounds.height;
+            const scaleX: number = this.canvas.width / canvasBounds.width;
+            const scaleY: number = this.canvas.height / canvasBounds.height;
             x = (clickX * scaleX) | 0;
             y = (clickY * scaleY) | 0;
         }

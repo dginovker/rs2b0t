@@ -16,6 +16,10 @@ const SCRATCH_SLOT = 499;
 let raw: RawClient | null = null;
 let packetListener: ((ptype: number) => void) | null = null;
 
+function interfaceList(): IfType[] {
+    return raw?.interfaceTypes ?? IfType.list;
+}
+
 export interface WorldTile {
     x: number;
     z: number;
@@ -380,7 +384,7 @@ export const reader = {
             return 0;
         }
 
-        return IfType.list[comId].linkObjType?.length ?? 0;
+        return interfaceList()[comId].linkObjType?.length ?? 0;
     },
 
     equipment(): InvItemSnapshot[] {
@@ -389,7 +393,7 @@ export const reader = {
             return [];
         }
 
-        return readInvComponent(comId, () => IfType.list[comId].iop ?? []);
+        return readInvComponent(comId, () => interfaceList()[comId].iop ?? []);
     },
 
     bankComId(): number {
@@ -406,7 +410,7 @@ export const reader = {
             return [];
         }
 
-        return readInvComponent(comId, () => IfType.list[comId].iop ?? []);
+        return readInvComponent(comId, () => interfaceList()[comId].iop ?? []);
     },
 
     bankSideItems(): InvItemSnapshot[] {
@@ -419,7 +423,7 @@ export const reader = {
             return [];
         }
 
-        return readInvComponent(comId, () => IfType.list[comId].iop ?? []);
+        return readInvComponent(comId, () => interfaceList()[comId].iop ?? []);
     },
 
     chatContinueComId(): number {
@@ -427,13 +431,13 @@ export const reader = {
             return -1;
         }
 
-        const modal = IfType.list[raw.chatModalId];
+        const modal = interfaceList()[raw.chatModalId];
         if (!modal?.children) {
             return -1;
         }
 
         for (const childId of modal.children) {
-            const child = IfType.list[childId];
+            const child = interfaceList()[childId];
             if (child && child.buttonType === ButtonType.BUTTON_CONTINUE) {
                 return childId;
             }
@@ -449,7 +453,7 @@ export const reader = {
         }
 
         const visit = (comId: number): void => {
-            const com = IfType.list[comId];
+            const com = interfaceList()[comId];
             if (!com) {
                 return;
             }
@@ -479,7 +483,7 @@ export const reader = {
         const objs: number[] = [];
         const buttons: { qty: number; comId: number }[] = [];
         const visit = (comId: number): void => {
-            const com = IfType.list[comId];
+            const com = interfaceList()[comId];
             if (!com) {
                 return;
             }
@@ -513,18 +517,18 @@ export const reader = {
         }
 
         cachedRunControls = null;
-        for (const root of IfType.list) {
+        for (const root of interfaceList()) {
             if (!root?.children) {
                 continue;
             }
-            const hasRetaliate = root.children.some(c => IfType.list[c]?.text === 'Auto retaliate');
+            const hasRetaliate = root.children.some(c => interfaceList()[c]?.text === 'Auto retaliate');
             if (!hasRetaliate || root.children.length <= 5) {
                 continue;
             }
 
             const off = root.children[4];
             const on = root.children[5];
-            if (IfType.list[on]?.buttonType !== undefined && IfType.list[off] !== undefined) {
+            if (interfaceList()[on]?.buttonType !== undefined && interfaceList()[off] !== undefined) {
                 cachedRunControls = { onComId: on, offComId: off };
             }
             break;
@@ -538,18 +542,18 @@ export const reader = {
             return cachedRetaliateControls;
         }
 
-        for (const root of IfType.list) {
+        for (const root of interfaceList()) {
             if (!root?.children) {
                 continue;
             }
-            const hasRetaliate = root.children.some(c => IfType.list[c]?.text === 'Auto retaliate');
+            const hasRetaliate = root.children.some(c => interfaceList()[c]?.text === 'Auto retaliate');
             if (!hasRetaliate || root.children.length <= 7) {
                 continue;
             }
 
             const off = root.children[6];
             const on = root.children[7];
-            if (IfType.list[on]?.buttonType !== undefined && IfType.list[off] !== undefined) {
+            if (interfaceList()[on]?.buttonType !== undefined && interfaceList()[off] !== undefined) {
                 cachedRetaliateControls = { onComId: on, offComId: off };
                 return cachedRetaliateControls;
             }
@@ -628,7 +632,7 @@ export const reader = {
             return [];
         }
 
-        return readInvComponent(comId, () => IfType.list[comId].iop ?? []);
+        return readInvComponent(comId, () => interfaceList()[comId].iop ?? []);
     },
 
     // offer screen = main modal 3323 (pack in side 3321); confirm screen = main modal 3443
@@ -641,19 +645,19 @@ export const reader = {
     },
 
     tradeMyOffer(): InvItemSnapshot[] {
-        return readInvComponent(3415, () => IfType.list[3415]?.iop ?? []); // trademain:inv
+        return readInvComponent(3415, () => interfaceList()[3415]?.iop ?? []); // trademain:inv
     },
 
     tradeTheirOffer(): InvItemSnapshot[] {
-        return readInvComponent(3416, () => IfType.list[3416]?.iop ?? []); // trademain:otherinv
+        return readInvComponent(3416, () => interfaceList()[3416]?.iop ?? []); // trademain:otherinv
     },
 
     tradeSidePack(): InvItemSnapshot[] {
-        return readInvComponent(3322, () => IfType.list[3322]?.iop ?? []); // tradeside:inv — your pack while trading
+        return readInvComponent(3322, () => interfaceList()[3322]?.iop ?? []); // tradeside:inv — your pack while trading
     },
 
     tradePartner(): string | null {
-        return IfType.list[3417]?.text ?? null; // trademain:otherplayer — "Trading With: <name>"
+        return interfaceList()[3417]?.text ?? null; // trademain:otherplayer — "Trading With: <name>"
     },
 
     closeButtonComId(rootComId: number): number {
@@ -669,7 +673,7 @@ export const reader = {
     },
 
     ifText(comId: number): string | null {
-        return IfType.list[comId]?.text ?? null;
+        return interfaceList()[comId]?.text ?? null;
     },
 
     mainModalTexts(): string[] {
@@ -683,7 +687,7 @@ export const reader = {
     },
 
     ifModelObjId(comId: number): number | null {
-        const com = IfType.list[comId];
+        const com = interfaceList()[comId];
         return com && com.model1Type === 4 ? com.model1Id : null;
     },
 
@@ -856,7 +860,7 @@ function walkComponents(rootComId: number): IfType[] {
     const out: IfType[] = [];
     const queue: number[] = [rootComId];
     while (queue.length > 0) {
-        const com = IfType.list[queue.shift()!];
+        const com = interfaceList()[queue.shift()!];
         if (!com) {
             continue;
         }
@@ -926,7 +930,7 @@ function findTabInvComponent(tabIndex: number): number {
 function findInvComponentIn(rootComId: number, accept: (com: IfType) => boolean): number {
     const queue: number[] = [rootComId];
     while (queue.length > 0) {
-        const com = IfType.list[queue.shift()!];
+        const com = interfaceList()[queue.shift()!];
         if (!com) {
             continue;
         }
@@ -949,7 +953,7 @@ function readInvComponent(comId: number, opsOf: (type: ObjType) => (string | nul
         return out;
     }
 
-    const com = IfType.list[comId];
+    const com = interfaceList()[comId];
     if (!com.linkObjType || !com.linkObjNumber) {
         return out;
     }

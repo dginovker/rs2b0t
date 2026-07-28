@@ -7,10 +7,25 @@ import { ResourcePanel } from './ResourcePanel.js';
 import { VaultPrompt } from './VaultPrompt.js';
 import type { Account } from './types.js';
 
-function boot(): void {
+async function installBotStyles(): Promise<void> {
+    if (document.querySelector('style[data-rs2b0t-client]')) return;
+    const response = await fetch(new URL('bot.html', document.baseURI));
+    if (!response.ok) throw new Error(`client styles: HTTP ${response.status}`);
+    const source = await response.text();
+    const css = /<style>([\s\S]*?)<\/style>/.exec(source)?.[1];
+    if (!css) throw new Error('client styles missing');
+    const style = document.createElement('style');
+    style.dataset.rs2b0tClient = '';
+    style.textContent = css;
+    document.head.append(style);
+}
+
+async function boot(): Promise<void> {
+    await installBotStyles();
+    const main = document.getElementById('mbx-main')!;
     const rail = document.getElementById('mbx-rail')!;
     const addTile = document.getElementById('mbx-add')!;
-
+    (globalThis as typeof globalThis & { __rs2b0tDisableAudio?: boolean }).__rs2b0tDisableAudio = true;
     const ops = new DomSlotOps(rail, addTile);
     const controller = new MultiBoxController(ops);
     const traffic = new TrafficCollector();
@@ -57,8 +72,8 @@ function boot(): void {
         return true;
     }
 
-    // Tiles carry a click-catching overlay (.mbx-hit) because the iframe underneath
-    // would otherwise swallow the click and the rail could never switch bots.
+    // Tiles carry a click-catching overlay so selecting/reordering a bot does
+    // not send accidental input to its game canvas.
     rail.addEventListener('click', ev => {
         if (suppressClick) {
             return;
@@ -203,6 +218,7 @@ function boot(): void {
     // keeps in slot order — so snapshot[i] is tile[i].
     function renderRail(): void {
         const snaps = controller.snapshot();
+        main.classList.toggle('has-bots', snaps.length > 0);
         resources.setBotCount(snaps.length);
         const tiles = railTiles();
         if (tiles.length !== snaps.length) {
@@ -239,6 +255,8 @@ function boot(): void {
             renderRail();
         },
         move: (id: number, toIndex: number) => moveSlot(id, toIndex),
+        setRendererEnabled: (id: number, enabled: boolean) => controller.setRendererEnabled(id, enabled),
+        startScript: (id: number, name: string) => controller.startScript(id, name),
         slots: () => controller.snapshot(),
         importProfiles: async (json: string | Profile[]): Promise<number> => {
             if (!(await prompt.ensureUnlocked())) {
@@ -260,8 +278,8 @@ function boot(): void {
 
 if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', boot);
+        document.addEventListener('DOMContentLoaded', () => void boot());
     } else {
-        boot();
+        void boot();
     }
 }

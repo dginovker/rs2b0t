@@ -1,17 +1,8 @@
-import { el } from './dom.js';
-import { downloadUrl, sleep } from '#/util/JsUtil.js';
-import JagFile from '#/io/JagFile.js';
-import Packet from '#/io/Packet.js';
-import Pix32 from '#/graphics/Pix32.js';
+import { sleep } from '#/util/JsUtil.js';
 import Pix2D from '#/graphics/Pix2D.js';
-import Pix8 from '#/graphics/Pix8.js';
-import PixFont from '#/graphics/PixFont.js';
 import PixMap from '#/graphics/PixMap.js';
-import { canvas2d } from '#/graphics/Canvas.js';
-import { TypedArray1d, TypedArray2d } from '#/util/Arrays.js';
 import { WALK_DESTINATIONS } from '../scripts/WalkDestinations.js';
 import type { WalkDestination } from '../scripts/WalkDestinations.js';
-import type Tile from '../api/Tile.js';
 
 import { MapView } from '../../mapview/MapView.js';
 import WorldMapFont from '../../mapview/WorldMapFont.js';
@@ -21,10 +12,8 @@ import WorldMapFont from '../../mapview/WorldMapFont.js';
  * Extends MapView but overrides run() to skip event binding and the game loop.
  */
 class StandaloneMapView extends MapView {
-    constructor() {
-        const saved = canvas2d.getImageData(0, 0, canvas.width, canvas.height);
-        super();
-        canvas2d.putImageData(saved, 0, 0);
+    constructor(canvas: HTMLCanvasElement) {
+        super(canvas);
     }
 
     override async run(): Promise<void> {
@@ -34,10 +23,6 @@ class StandaloneMapView extends MapView {
 
     override async drawProgress(_message: string, _progress: number): Promise<void> {
         await sleep(5);
-    }
-
-    protected resize(width: number, height: number): void {
-        this.drawArea = new PixMap(width, height);
     }
 }
 
@@ -128,8 +113,7 @@ export class WorldMapPicker {
             document.body.appendChild(overlay);
 
             // Reuse active MapView or construct a standalone renderer
-            const isFreshMapView = !activeMapView;
-            const mapView = activeMapView ?? new StandaloneMapView();
+            const mapView = activeMapView ?? new StandaloneMapView(canvas);
             const picker = new WorldMapPicker(mapView);
 
             // Bind PixMap raster target using the 2D context
@@ -228,7 +212,7 @@ export class WorldMapPicker {
                 pixMap.draw(0, 0);
 
                 // Restore Pix2D to main canvas so game client draws correctly afterward
-                mapView.drawArea?.setPixels();
+                mapView.activateRaster();
             })();
         });
     }

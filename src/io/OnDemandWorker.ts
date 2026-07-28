@@ -48,6 +48,24 @@ type WorkerScope = {
 };
 
 const worker = self as unknown as WorkerScope;
+const sharedWorker = self as unknown as {
+    addEventListener(type: 'connect', listener: (event: MessageEvent) => void): void;
+};
+const sharedMode = self.constructor.name === 'SharedWorkerGlobalScope';
+const sharedPorts = new Set<MessagePort>();
+
+function postOutbound(message: OutboundMessage, transfer?: Transferable[]): void {
+    if (!sharedMode) {
+        worker.postMessage(message, transfer);
+        return;
+    }
+    // Every embedded client that requested a file has its own pending request.
+    // Broadcast a structured clone; OnDemand ignores completions it did not ask
+    // for, and a transferable buffer cannot be sent to more than one port.
+    for (const port of sharedPorts) {
+        port.postMessage(message);
+    }
+}
 
 const CRC32_POLYNOMIAL = 0xedb88320;
 const crctable = new Int32Array(256);
@@ -206,6 +224,9 @@ class WorkerOnDemand {
         if (!this.validFile(archive, file)) {
             return;
         }
+        if ([this.queue, this.missing, this.pending].some(requests => requests.some(req => req.archive === archive && req.file === file && req.urgent))) {
+            return;
+        }
 
         const req: WorkerRequest = {
             archive,
@@ -272,7 +293,7 @@ class WorkerOnDemand {
         this.loopBusy = true;
         this.run()
             .catch((e: unknown) => {
-                worker.postMessage({ type: 'error', error: e instanceof Error ? e.message : String(e) });
+                postOutbound({ type: 'error', error: e instanceof Error ? e.message : String(e) });
             })
             .finally(() => {
                 this.loopBusy = false;
@@ -647,7 +668,7 @@ class WorkerOnDemand {
 
     private postCompleted(req: WorkerRequest): void {
         if (req.data === null) {
-            worker.postMessage({
+            postOutbound({
                 type: 'completed',
                 archive: req.archive,
                 file: req.file,
@@ -659,7 +680,7 @@ class WorkerOnDemand {
 
         const data = req.data.byteOffset === 0 && req.data.byteLength === req.data.buffer.byteLength && req.data.buffer instanceof ArrayBuffer ? req.data : req.data.slice();
         const buffer = data.buffer as ArrayBuffer;
-        worker.postMessage(
+        postOutbound(
             {
                 type: 'completed',
                 archive: req.archive,
@@ -688,7 +709,7 @@ class WorkerOnDemand {
         }
 
         this.message = message;
-        worker.postMessage({ type: 'message', message });
+        postOutbound({ type: 'message', message });
     }
 
     private setFailCount(failCount: number): void {
@@ -697,31 +718,73 @@ class WorkerOnDemand {
         }
 
         this.failCount = failCount;
-        worker.postMessage({ type: 'failCount', failCount });
+        postOutbound({ type: 'failCount', failCount });
     }
 }
 
 let onDemand: WorkerOnDemand | null = null;
 let messageQueue: Promise<void> = Promise.resolve();
+const portIngame = new Map<MessagePort, boolean>();
 
-worker.addEventListener('message', (event: MessageEvent<InboundMessage>): void => {
+function enqueue(message: InboundMessage, source: MessagePort | null): void {
     messageQueue = messageQueue
-        .then(() => handleMessage(event.data))
+        .then(() => handleMessage(message, source))
         .catch((e: unknown) => {
-            worker.postMessage({ type: 'error', error: e instanceof Error ? e.message : String(e) });
+            if (source) {
+                source.postMessage({ type: 'error', error: e instanceof Error ? e.message : String(e) } satisfies OutboundMessage);
+            } else {
+                postOutbound({ type: 'error', error: e instanceof Error ? e.message : String(e) });
+            }
         });
-});
+}
 
-async function handleMessage(message: InboundMessage): Promise<void> {
+if (sharedMode) {
+    sharedWorker.addEventListener('connect', (event: MessageEvent): void => {
+        const port = event.ports[0];
+        if (!port) {
+            return;
+        }
+        sharedPorts.add(port);
+        portIngame.set(port, false);
+        port.addEventListener('message', (message: MessageEvent<InboundMessage>): void => enqueue(message.data, port));
+        port.start();
+    });
+} else {
+    worker.addEventListener('message', (event: MessageEvent<InboundMessage>): void => enqueue(event.data, null));
+}
+
+async function handleMessage(message: InboundMessage, source: MessagePort | null): Promise<void> {
     if (message.type === 'init') {
-        onDemand?.stop();
-        onDemand = new WorkerOnDemand(message);
+        if (!onDemand) {
+            onDemand = new WorkerOnDemand(message);
+        }
+        if (source) {
+            portIngame.set(source, message.ingame);
+            onDemand.ingame = [...portIngame.values()].some(Boolean);
+        }
     } else if (message.type === 'stop') {
-        onDemand?.stop();
-        onDemand = null;
+        if (source) {
+            sharedPorts.delete(source);
+            portIngame.delete(source);
+            source.close();
+            if (sharedPorts.size === 0) {
+                onDemand?.stop();
+                onDemand = null;
+            } else if (onDemand) {
+                onDemand.ingame = [...portIngame.values()].some(Boolean);
+            }
+        } else {
+            onDemand?.stop();
+            onDemand = null;
+        }
     } else if (message.type === 'setIngame') {
         if (onDemand) {
-            onDemand.ingame = message.ingame;
+            if (source) {
+                portIngame.set(source, message.ingame);
+                onDemand.ingame = [...portIngame.values()].some(Boolean);
+            } else {
+                onDemand.ingame = message.ingame;
+            }
         }
     } else if (message.type === 'request') {
         onDemand?.request(message.archive, message.file);
@@ -730,7 +793,12 @@ async function handleMessage(message: InboundMessage): Promise<void> {
             await onDemand?.prefetchPriority(message.archive, message.file, message.priority);
         } finally {
             if (typeof message.id === 'number') {
-                worker.postMessage({ type: 'ack', id: message.id });
+                const ack = { type: 'ack', id: message.id } as const;
+                if (source) {
+                    source.postMessage(ack);
+                } else {
+                    postOutbound(ack);
+                }
             }
         }
     } else if (message.type === 'prefetch') {

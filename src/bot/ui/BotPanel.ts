@@ -12,7 +12,13 @@ import ParamsModal from './ParamsModal.js';
 import { isVisible, summarize } from './paramControls.js';
 import { el } from './dom.js';
 
-const SELECTED_SCRIPT_KEY = boxKey('selectedScript');
+const selectedScriptKey = (): string => boxKey('selectedScript');
+const rendererEnabledKey = (): string => boxKey('rendererEnabled');
+
+export interface RendererControl {
+    enabled(): boolean;
+    setEnabled(enabled: boolean): void | Promise<void>;
+}
 
 export default class BotPanel {
     private host: BotHostImpl;
@@ -38,7 +44,7 @@ export default class BotPanel {
 
     private lastRender = 0;
 
-    constructor(root: HTMLElement, host: BotHostImpl) {
+    constructor(root: HTMLElement, host: BotHostImpl, renderer?: RendererControl) {
         this.host = host;
 
         root.replaceChildren();
@@ -63,8 +69,8 @@ export default class BotPanel {
         script.appendChild(sectionTitle('script'));
 
         this.library = new ScriptLibrary(name => this.selectScript(name));
-        const remembered = (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(SELECTED_SCRIPT_KEY) : null)
-            ?? (typeof localStorage !== 'undefined' ? localStorage.getItem(SELECTED_SCRIPT_KEY) : null);
+        const remembered = (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(selectedScriptKey()) : null)
+            ?? (typeof localStorage !== 'undefined' ? localStorage.getItem(selectedScriptKey()) : null);
         this.selectedScript = remembered && ScriptRegistry.get(remembered) ? remembered : (ScriptRegistry.list()[0]?.name ?? '');
 
         const pick = el('div', 'rs2b0t-buttons');
@@ -121,13 +127,52 @@ export default class BotPanel {
         logSection.appendChild(this.logBox);
         root.appendChild(logSection);
 
+        if (renderer) {
+            const rendering = el('div', 'rs2b0t-section');
+            rendering.appendChild(sectionTitle('rendering'));
+            const rendererRow = el('label', 'rs2b0t-setting rs2b0t-setting-bool');
+            const rendererToggle = document.createElement('input');
+            rendererToggle.type = 'checkbox';
+            const saved = localStorage.getItem(rendererEnabledKey());
+            rendererToggle.checked = saved === null ? renderer.enabled() : saved !== '0';
+            const rendererLabel = el('span', 'rs2b0t-setting-label');
+            rendererLabel.textContent = 'game renderer';
+            rendererLabel.title = 'Disable graphics while keeping this bot, script, and connection running';
+            rendererRow.append(rendererToggle, rendererLabel);
+            rendering.appendChild(rendererRow);
+            root.appendChild(rendering);
+
+            const applyRenderer = (enabled: boolean): void => {
+                void Promise.resolve(renderer.setEnabled(enabled)).catch(error => {
+                    rendererToggle.checked = renderer.enabled();
+                    localStorage.setItem(rendererEnabledKey(), rendererToggle.checked ? '1' : '0');
+                    console.error('[rs2b0t] renderer transition failed', error);
+                });
+            };
+            rendererToggle.addEventListener('change', () => {
+                localStorage.setItem(rendererEnabledKey(), rendererToggle.checked ? '1' : '0');
+                applyRenderer(rendererToggle.checked);
+            });
+            applyRenderer(rendererToggle.checked);
+        }
+
         ScriptRunner.onChange(() => {
             this.renderScriptControls();
             this.renderLog();
             this.renderSettings();
         });
 
-        host.addDrawListener(() => this.maybeRender());
+        host.addDrawListener(() => this.maybeRender(200));
+        if (renderer) {
+            // A suspended client deliberately emits no draw events. Keep its
+            // status/log live at a cheap 1 Hz so "renderer off" never looks
+            // like a frozen or disconnected bot.
+            host.addFrameListener(() => {
+                if (!renderer.enabled()) {
+                    this.maybeRender(1000);
+                }
+            });
+        }
         this.render();
         this.ensureSelection();
         this.renderScriptControls();
@@ -140,10 +185,10 @@ export default class BotPanel {
         }
         this.selectedScript = name;
         if (typeof sessionStorage !== 'undefined') {
-            sessionStorage.setItem(SELECTED_SCRIPT_KEY, name);
+            sessionStorage.setItem(selectedScriptKey(), name);
         }
         if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(SELECTED_SCRIPT_KEY, name);
+            localStorage.setItem(selectedScriptKey(), name);
         }
         this.scriptName.textContent = name;
         this.renderSettings();
@@ -333,9 +378,9 @@ export default class BotPanel {
         }
     }
 
-    private maybeRender(): void {
+    private maybeRender(minimumIntervalMs: number): void {
         const now = performance.now();
-        if (now - this.lastRender < 200) {
+        if (now - this.lastRender < minimumIntervalMs) {
             return;
         }
 

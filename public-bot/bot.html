@@ -23,7 +23,7 @@
         }
 
         /* full-viewport row: game fills the left, panel fixed on the right */
-        #rs2b0t-root {
+        .rs2b0t-root {
             display: flex;
             align-items: stretch;
             gap: 8px;
@@ -31,7 +31,7 @@
             box-sizing: border-box;
         }
 
-        #game-wrap {
+        .game-wrap {
             flex: 1 1 auto;
             min-width: 0;
             display: flex;
@@ -40,15 +40,27 @@
             overflow: hidden;
         }
 
-        /* JS sizes this to the largest 765:503 box that fits #game-wrap;
+        /* JS sizes this to the largest 765:503 box that fits .game-wrap;
            both canvases fill it, so they scale together and stay aligned. */
-        #game-stage {
+        .game-stage {
             position: relative;
             width: 765px;
             height: 503px;
         }
+        .renderer-off {
+            display: none;
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            place-content: center;
+            text-align: center;
+            color: #9be05b;
+            background: #080b08;
+            font: 14px ui-monospace, monospace;
+        }
+        .rs2b0t-renderer-off .renderer-off { display: grid; }
 
-        #game-stage canvas {
+        .game-stage canvas {
             position: absolute;
             top: 0;
             left: 0;
@@ -61,14 +73,14 @@
             image-rendering: pixelated;
         }
 
-        #overlay {
+        .game-overlay {
             pointer-events: none;
             z-index: 2;
         }
 
         /* ---- bot panel ---- */
 
-        #bot-panel {
+        .bot-panel {
             width: 330px;
             flex: 0 0 330px;
             height: 100vh;
@@ -453,16 +465,17 @@
 </head>
 
 <body>
-    <div id="rs2b0t-root">
-        <div id="game-wrap">
-            <div id="game-stage">
-                <canvas id="canvas" width="765" height="503">
+    <div id="rs2b0t-root" class="rs2b0t-root">
+        <div id="game-wrap" class="game-wrap">
+            <div id="game-stage" class="game-stage">
+                <canvas id="canvas" class="game-canvas" width="765" height="503">
                     Your browser is not capable of running our web client.
                 </canvas>
-                <canvas id="overlay" width="765" height="503"></canvas>
+                <canvas id="overlay" class="game-overlay" width="765" height="503"></canvas>
+                <div id="renderer-off" class="renderer-off">Renderer off<br><small>bot, script, and connection still running</small></div>
             </div>
         </div>
-        <div id="bot-panel"></div>
+        <div id="bot-panel" class="bot-panel"></div>
     </div>
 
     <script>

@@ -13,7 +13,7 @@ export interface LoginCoordinatorOptions {
 }
 
 /**
- * Coordinates login handshakes across every iframe in one multibox wall.
+ * Coordinates login handshakes across every client in one multibox wall.
  *
  * The production server permits four attempts for one client UID, then rejects
  * the fifth until that UID has been idle for 15 seconds. The cooldown is measured

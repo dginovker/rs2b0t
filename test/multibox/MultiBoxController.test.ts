@@ -9,6 +9,8 @@ class FakeHandle implements SlotHandle {
     destroyed = false;
     loginCoordination: LoginCoordination | null = null;
     setRenderMode(m: RenderMode): void { this.mode = m; this.calls.push(`mode:${m}`); }
+    setRendererEnabled(on: boolean): void { this.calls.push(`renderer:${on}`); }
+    startScript(name: string): void { this.calls.push(`script:${name}`); }
     setCredentials(u: string): void { this.calls.push(`creds:${u}`); }
     setAutoLogin(on: boolean): void { this.calls.push(`autoLogin:${on}`); }
     setLoginCoordination(coordination: LoginCoordination | null): void {
@@ -108,6 +110,21 @@ describe('MultiBoxController', () => {
         expect(ops.handles[0].mode).toBe('focused');
         expect(ops.handles[1].mode).toBe('background');
         expect(c.focusedId).toBe(a.id);
+    });
+
+    test('renderer and script commands target only the requested bot', () => {
+        const ops = new FakeOps();
+        const c = new MultiBoxController(ops);
+        const alice = c.add({ username: 'alice', password: 'a' })!;
+        c.add({ username: 'bob', password: 'b' })!;
+        ops.handles.forEach(handle => handle.calls.length = 0);
+
+        expect(c.setRendererEnabled(alice.id, false)).toBe(true);
+        expect(c.startScript(alice.id, 'QuestDashboard')).toBe(true);
+        expect(c.setRendererEnabled(999, false)).toBe(false);
+        expect(c.startScript(999, 'QuestDashboard')).toBe(false);
+        expect(ops.handles[0].calls).toEqual(['renderer:false', 'script:QuestDashboard']);
+        expect(ops.handles[1].calls).toEqual([]);
     });
 
     test('move reorders slots and their handles without changing focus', () => {
