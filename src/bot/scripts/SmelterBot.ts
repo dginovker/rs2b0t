@@ -153,8 +153,17 @@ class BankTrip implements Task {
         }
 
         for (const step of plan) {
-            // re-checked per step: the window can shut between withdrawals too
-            if (!Bank.isOpen() || !Bank.loaded()) {
+            // Re-check per step: the window can close or its list can refresh between
+            // withdrawals. Wait out a refresh, but do not mistake a closed window for it.
+            if (!Bank.isOpen()) {
+                this.bot.log('the bank window closed mid-withdrawal — reopening and retrying this trip');
+                return;
+            }
+            if (!Bank.loaded() && !(await Execution.delayUntil(() => !Bank.isOpen() || Bank.loaded(), 3000))) {
+                this.bot.log(`the bank list is still refreshing before '${step.ore}' — retrying this trip`);
+                return;
+            }
+            if (!Bank.isOpen()) {
                 this.bot.log('the bank window closed mid-withdrawal — reopening and retrying this trip');
                 return;
             }

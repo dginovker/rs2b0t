@@ -58,16 +58,18 @@ export const Bank = {
         if (!xOp) {
             return false;
         }
-        const target = invCount() + count;
+        const before = invCount();
         await clickInvButton(reader.bankItems(), name, xOp);
         if (!(await Execution.delayUntil(() => reader.countDialogOpen(), 3000))) {
             return false;
         }
-        actions.answerCountDialog(count);
-        return Execution.delayUntil(
-            () => invCount() >= target || Bank.count(name) === 0 || reader.inventory().length >= reader.inventorySize(),
-            4000
-        );
+        if (!actions.answerCountDialog(count)) {
+            return false;
+        }
+        // The main bank item list briefly empties while the server refreshes it.
+        // Bank.count() therefore cannot prove depletion here: it used to report 0
+        // before the inventory update landed and make callers advance prematurely.
+        return Execution.delayUntil(() => invCount() > before, 4000);
     },
 
     deposit(name: string, op: string = 'Deposit-1'): boolean | Promise<boolean> {
