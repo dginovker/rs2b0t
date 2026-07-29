@@ -39,9 +39,7 @@ if (typeof document !== 'undefined' && document.getElementById('canvas')) {
             setEnabled: enabled => {
                 RenderGate.setEnabled(enabled);
                 document.body.classList.toggle('rs2b0t-renderer-off', !enabled);
-            },
-            focusedFps: () => RenderGate.focusedFps,
-            setFocusedFps: fps => RenderGate.setFocusedFps(fps)
+            }
         });
     }
 

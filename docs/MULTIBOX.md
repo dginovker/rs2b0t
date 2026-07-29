@@ -37,9 +37,9 @@ export interface SlotHandle {
 
 Five details that are not guessable from the outside:
 
-- **Rail slots paint at ~1 fps; the focused slot uses its selected FPS cap.** The
-  default is the original 50 fps, with lower caps available below the bot log. The
-  rate is set inside each iframe; the logical game loop remains at full speed.
+- **Rail slots paint at ~1 fps; the focused slot draws every frame.** That is what
+  keeps a wall affordable while preserving the original focused-client behavior.
+  The rate is set inside each iframe; the logical game loop remains at full speed.
 - **Rendering can be disabled per bot without changing client state.** The draw gate
   skips game and overlay paints, but keeps the iframe, canvas, complete scene, game
   loop, script, and WebSocket alive. Re-enabling therefore draws the already-current

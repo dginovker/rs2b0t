@@ -14,14 +14,10 @@ import { el } from './dom.js';
 
 const SELECTED_SCRIPT_KEY = boxKey('selectedScript');
 const rendererEnabledKey = (): string => boxKey('rendererEnabled');
-const rendererFpsKey = (): string => boxKey('rendererFocusedFps');
-const FOCUSED_FPS_OPTIONS = [50, 30, 25, 20, 15, 10, 5, 1];
 
 export interface RendererControl {
     enabled(): boolean;
     setEnabled(enabled: boolean): void;
-    focusedFps(): number;
-    setFocusedFps(fps: number): void;
 }
 
 export default class BotPanel {
@@ -371,44 +367,19 @@ export default class BotPanel {
         rendererRow.append(rendererToggle, rendererLabel);
         rendering.appendChild(rendererRow);
 
-        const fpsRow = el('label', 'rs2b0t-setting');
-        const fpsLabel = el('span', 'rs2b0t-setting-label');
-        fpsLabel.textContent = 'focused FPS';
-        fpsLabel.title = 'Cap only drawing; the game and bot loops remain at full speed';
-        const fpsSelect = document.createElement('select');
-        fpsSelect.className = 'rs2b0t-input rs2b0t-render-fps';
-        for (const fps of FOCUSED_FPS_OPTIONS) {
-            const option = document.createElement('option');
-            option.value = String(fps);
-            option.textContent = String(fps);
-            fpsSelect.appendChild(option);
-        }
-        const savedFps = Number(localStorage.getItem(rendererFpsKey()));
-        const initialFps = FOCUSED_FPS_OPTIONS.includes(savedFps) ? savedFps : renderer.focusedFps();
-        fpsSelect.value = String(FOCUSED_FPS_OPTIONS.includes(initialFps) ? initialFps : 50);
-        fpsRow.append(fpsLabel, fpsSelect);
-        rendering.appendChild(fpsRow);
-
         const note = el('div', 'rs2b0t-dim rs2b0t-render-note');
         note.textContent = 'Rail previews stay at 1 FPS. Rendering never pauses the bot.';
         rendering.appendChild(note);
 
         const applyEnabled = (): void => {
             renderer.setEnabled(rendererToggle.checked);
-            fpsSelect.disabled = !rendererToggle.checked;
         };
         rendererToggle.addEventListener('change', () => {
             localStorage.setItem(rendererEnabledKey(), rendererToggle.checked ? '1' : '0');
             applyEnabled();
         });
-        fpsSelect.addEventListener('change', () => {
-            const fps = Number(fpsSelect.value);
-            localStorage.setItem(rendererFpsKey(), String(fps));
-            renderer.setFocusedFps(fps);
-        });
 
         applyEnabled();
-        renderer.setFocusedFps(Number(fpsSelect.value));
         return rendering;
     }
 
