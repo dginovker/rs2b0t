@@ -9,6 +9,7 @@ import { ChatDialog } from '../api/hud/ChatDialog.js';
 import { Equipment } from '../api/hud/Equipment.js';
 import { Inventory } from '../api/hud/Inventory.js';
 import { Paint } from '../api/hud/Paint.js';
+import { Shop } from '../api/hud/Shop.js';
 import { Quests } from '../api/hud/Quests.js';
 import { Skills } from '../api/hud/Skills.js';
 import { ContinueDialog } from '../api/tasks/ContinueDialog.js';
@@ -18,7 +19,8 @@ import { Traversal } from '../api/Traversal.js';
 import { ScriptRunner } from '../runtime/ScriptRunner.js';
 import { SettingsStore } from '../runtime/Settings.js';
 import type { SettingsSchema } from '../runtime/Settings.js';
-import { BEST_AVAILABLE, ESS_ITEM, PICK_OPTIONS, inEssMine, requiredMiningLevel, resolvePick, withdrawOneOp } from './EssMinerLogic.js';
+import { COINS, NURMOF_VENDOR, PICKAXE_SHOP_COSTS } from '../api/ToolAcquire.js';
+import { BEST_AVAILABLE, ESS_ITEM, PICK_OPTIONS, desiredPickTier, inEssMine, requiredMiningLevel, resolvePick, withdrawOneOp } from './EssMinerLogic.js';
 import { fmtDuration } from '../api/hud/paintLogic.js';
 
 const BANK_STAND = new Tile(3251, 3420, 0);
@@ -66,6 +68,7 @@ export default class EssMiner extends TaskBot {
     private status = 'starting';
     private startedAt = Date.now();
     private xpAtStart = 0;
+    private bestPickChecked = false;
     questRefused = false;
 
     override async onStart(): Promise<void> {
@@ -98,6 +101,7 @@ export default class EssMiner extends TaskBot {
             new MineEss(this),
             new UsePortal(this),
             new BankEss(this),
+            new AcquireBestPick(this),
             new GetPick(this),
             new TeleportIn(this)
         );
@@ -129,6 +133,7 @@ export default class EssMiner extends TaskBot {
             return;
         }
         PICK_CHOICE = pick;
+        this.bestPickChecked = false;
         SettingsStore.save('EssMiner', 'pickaxe', pick);
         this.log(`pickaxe switched to ${pick} (from the paint)`);
     }
@@ -139,11 +144,124 @@ export default class EssMiner extends TaskBot {
     tripsTotal(): number { return this.trips; }
     countBankFail(): number { return ++this.bankFails; }
     resetBankFail(): void { this.bankFails = 0; }
+    needsBestPickCheck(): boolean { return !this.bestPickChecked; }
+    finishBestPickCheck(): void { this.bestPickChecked = true; }
 
     async walkTo(dest: Tile, radius = 2): Promise<void> {
         const here = Game.tile();
         if (here && dest.distanceTo(here) <= radius) { return; }
         await Traversal.walkResilient(dest, { radius, attempts: 6, timeoutMs: 240_000, log: m => this.log(`  ${m}`) });
+    }
+}
+
+class AcquireBestPick implements Task {
+    constructor(private bot: EssMiner) {}
+
+    validate(): boolean {
+        return !inMine() && essCount() === 0 && this.bot.needsBestPickCheck();
+    }
+
+    async execute(): Promise<void> {
+        const target = desiredPickTier(PICK_CHOICE, Skills.level('mining'));
+        if (!target) {
+            this.bot.finishBestPickCheck();
+            return;
+        }
+        if (heldNames().some(name => name.toLowerCase() === target.item.toLowerCase())) {
+            this.bot.finishBestPickCheck();
+            return;
+        }
+
+        this.bot.setStatus(`checking bank for ${target.item}`);
+        await this.bot.walkTo(BANK_STAND);
+        if (!Bank.isOpen() && !(await Bank.openBooth(BANK_STAND, BOOTH.name, BOOTH.op, m => this.bot.log(`  ${m}`)))) {
+            if (this.bot.countBankFail() >= MAX_BANK_FAILS) {
+                this.bot.log('EssMiner: could not reach the Varrock East bank to check for the best pickaxe. Stopping.');
+                ScriptRunner.stop();
+            }
+            return;
+        }
+        this.bot.resetBankFail();
+        await Execution.delayUntil(() => Bank.loaded() || !Bank.isOpen(), 4000);
+        if (!Bank.isOpen()) {
+            return;
+        }
+
+        const bankItem = Bank.items().find(i => i.name?.toLowerCase() === target.item.toLowerCase());
+        if (bankItem) {
+            const op = withdrawOneOp(bankItem.ops);
+            const before = Inventory.count(target.item);
+            if (op && await Bank.withdraw(target.item, op)) {
+                await Execution.delayUntil(() => Inventory.count(target.item) > before, 4000);
+            }
+            if (Inventory.count(target.item) > before) {
+                this.bot.log(`withdrew best usable ${target.item}`);
+                this.bot.finishBestPickCheck();
+            }
+            await Bank.close();
+            return;
+        }
+
+        const cost = PICKAXE_SHOP_COSTS[target.item];
+        const heldCoins = Inventory.count(COINS);
+        const bankCoins = Bank.count(COINS);
+        if (cost == null || heldCoins + bankCoins < cost) {
+            this.bot.log(`best usable ${target.item} costs ${cost ?? '?'}gp; bank + pack has ${heldCoins + bankCoins}gp — using the best pickaxe already owned`);
+            this.bot.finishBestPickCheck();
+            await Bank.close();
+            return;
+        }
+
+        const need = Math.max(0, cost - heldCoins);
+        if (need > 0) {
+            this.bot.log(`withdrawing ${need}gp for ${target.item}`);
+            if (!(await Bank.withdrawX(COINS, need))) {
+                this.bot.log('could not withdraw pickaxe coins — will retry');
+                await Bank.close();
+                return;
+            }
+            await Execution.delayUntil(() => Inventory.count(COINS) >= cost, 4000);
+        }
+        await Bank.close();
+        if (Inventory.count(COINS) < cost) {
+            return;
+        }
+
+        this.bot.setStatus(`buying ${target.item} from Nurmof`);
+        const hopFrom = NURMOF_VENDOR.hopFrom;
+        const hopLoc = NURMOF_VENDOR.hopLoc;
+        const hopAction = NURMOF_VENDOR.hopAction;
+        const here = Game.tile();
+        if (hopFrom && hopLoc && hopAction && here && here.z < 9000) {
+            this.bot.log(`heading to the Dwarven Mine for ${target.item}`);
+            if (!(await Traversal.walkResilient(hopFrom, { radius: 2, timeoutMs: 120_000, log: m => this.bot.log(`  ${m}`) }))) {
+                return;
+            }
+            const trapdoor = Locs.query().name(hopLoc).action(hopAction).nearest();
+            if (!trapdoor || !(await trapdoor.interact(hopAction))) {
+                this.bot.log('could not enter the Dwarven Mine — will retry');
+                return;
+            }
+            if (!(await Execution.delayUntil(() => (Game.tile()?.z ?? 0) >= 9000, 10_000))) {
+                return;
+            }
+        }
+        if (!(await Traversal.walkResilient(NURMOF_VENDOR.stand, { radius: 4, timeoutMs: 120_000, log: m => this.bot.log(`  ${m}`) }))) {
+            return;
+        }
+        if (!(await Shop.open(NURMOF_VENDOR.keeper))) {
+            this.bot.log("could not open Nurmof's shop — will retry");
+            return;
+        }
+        const before = Inventory.count(target.item);
+        const bought = await Shop.buy(target.item, 1);
+        await Shop.close();
+        if (bought > 0 || Inventory.count(target.item) > before) {
+            this.bot.log(`bought best usable ${target.item} from Nurmof for ${cost}gp`);
+        } else {
+            this.bot.log(`${target.item} was out of stock at Nurmof — using the best pickaxe already owned`);
+        }
+        this.bot.finishBestPickCheck();
     }
 }
 

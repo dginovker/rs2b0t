@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { BEST_AVAILABLE, ESS_ITEM, PICK_OPTIONS, PICK_TIERS, inEssMine, requiredMiningLevel, resolvePick, withdrawOneOp } from '#/bot/scripts/EssMinerLogic.js';
+import { BEST_AVAILABLE, ESS_ITEM, PICK_OPTIONS, PICK_TIERS, desiredPickTier, inEssMine, requiredMiningLevel, resolvePick, withdrawOneOp } from '#/bot/scripts/EssMinerLogic.js';
 
 describe('PICK_TIERS', () => {
     test('best-first with the content levelrequire values (pickaxes.obj)', () => {
@@ -19,6 +19,18 @@ describe('requiredMiningLevel', () => {
         expect(requiredMiningLevel('steel')).toBe(6);
         expect(requiredMiningLevel(BEST_AVAILABLE)).toBeNull();
         expect(requiredMiningLevel('Dragon')).toBeNull();
+    });
+});
+
+describe('desiredPickTier', () => {
+    test('Best available resolves the exact highest tier the level can use', () => {
+        expect(desiredPickTier(BEST_AVAILABLE, 50)?.item).toBe('Rune pickaxe');
+        expect(desiredPickTier(BEST_AVAILABLE, 40)?.item).toBe('Adamant pickaxe');
+        expect(desiredPickTier(BEST_AVAILABLE, 20)?.item).toBe('Steel pickaxe');
+    });
+    test('specific selections remain exact and level-gated', () => {
+        expect(desiredPickTier('Mithril', 50)?.item).toBe('Mithril pickaxe');
+        expect(desiredPickTier('Mithril', 20)).toBeNull();
     });
 });
 

@@ -486,7 +486,7 @@ Tags: `herblore`, `karamja`, `members`, `afk`
 
 ### EssMiner
 
-Rune essence loop — Aubury teleport, one-click mine to a full pack, portal back, bank at Varrock East. Needs Rune Mysteries + a usable pickaxe (picks your best by default)
+Rune essence loop — Aubury teleport, one-click mine to a full pack, portal back, bank at Varrock East. Needs Rune Mysteries; uses your best pickaxe and buys the exact best usable tier from Nurmof when banked coins cover it
 
 Tags: `varrock`, `mining`, `banking`, `afk`
 
