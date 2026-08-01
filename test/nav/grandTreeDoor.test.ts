@@ -56,10 +56,10 @@ describe('Grand Tree main doors', () => {
         expect(outcome.waypoints.at(-1)?.transport).toMatchObject({
             locName: 'Tree Door',
             action: 'Open',
-            locX: from.x,
-            locZ: from.z,
-            toTile: { x: to.x, z: to.z }
+            locX: 2465,
+            locZ: 3492
         });
+        expect(outcome.waypoints.at(-1)?.transport?.toTile).toBeUndefined();
     }
 
     test('records both scripted Tree Door crossings', () => {
