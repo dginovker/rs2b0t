@@ -3,6 +3,7 @@ import { Game } from '../../api/Game.js';
 import { ChatDialog } from '../../api/hud/ChatDialog.js';
 import { Inventory, type InvItem } from '../../api/hud/Inventory.js';
 import { Skills } from '../../api/hud/Skills.js';
+import { Sustain } from '../../api/Sustain.js';
 import { GroundItems } from '../../api/queries/GroundItems.js';
 import { Npcs, type Npc } from '../../api/queries/Npcs.js';
 import { Traversal } from '../../api/Traversal.js';
@@ -42,13 +43,30 @@ const GOBLIN_DIPLOMACY_FUNDING_TARGET = GOBLIN_DIPLOMACY_COIN_TARGET + AL_KHARID
 const FUNDING_MAN_LEASH = 24;
 const SAFE_PICKPOCKET_HP = 3;
 const FUNDING_STALL_MS = 120_000;
+const FUNDING_REGEN_WAIT_MS = 60_000;
 const GOBLIN_REATTACK_MS = 5000;
 const GOBLIN_REJECT_MS = 15_000;
+const GOBLIN_DISENGAGE_GRACE_MS = 5000;
 let goblinMailTargetIndex: number | null = null;
 let goblinMailTargetEngaged = false;
 let goblinMailLastAttackAt = 0;
+let goblinMailDisengagedAt = 0;
 let goblinMailRejectedTargetIndex: number | null = null;
 let goblinMailRejectedUntil = 0;
+let goblinMailOwner: string | null = null;
+
+function releaseGoblinMailTarget(): void {
+    goblinMailTargetIndex = null;
+    goblinMailTargetEngaged = false;
+    goblinMailLastAttackAt = 0;
+    goblinMailDisengagedAt = 0;
+}
+
+function resetGoblinMailCombat(): void {
+    releaseGoblinMailTarget();
+    goblinMailRejectedTargetIndex = null;
+    goblinMailRejectedUntil = 0;
+}
 
 const has = (snap: QuestSnapshot, name: string): boolean => (snap.inv.get(name) ?? 0) > 0;
 const qty = (snap: QuestSnapshot, name: string): number => snap.inv.get(name) ?? 0;
@@ -214,8 +232,11 @@ async function restoreFundingHealth(canBuyKebabs: boolean, log: (message: string
             }
             continue;
         }
-        log(`waiting for ${SAFE_PICKPOCKET_HP} Hitpoints before another Man pickpocket`);
-        await Execution.delayUntil(() => Skills.effective('hitpoints') >= SAFE_PICKPOCKET_HP, 0);
+        log(`waiting up to ${FUNDING_REGEN_WAIT_MS / 1000}s for ${SAFE_PICKPOCKET_HP} Hitpoints before another Man pickpocket`);
+        if (!(await Execution.delayUntil(() => Skills.effective('hitpoints') >= SAFE_PICKPOCKET_HP, FUNDING_REGEN_WAIT_MS))) {
+            log(`still below ${SAFE_PICKPOCKET_HP} Hitpoints with no usable food or Kebab funds — pausing funding`);
+            return false;
+        }
     }
     return true;
 }
@@ -309,8 +330,11 @@ export function goblinMailGatherStep(snap: QuestSnapshot, need = 1): QuestStep {
     const carriedFood = combatFoodCount(snap);
     const heldCoins = qty(snap, 'coins');
     const foodReady = inGoblinMailField(snap.tile) ? carriedFood > GOBLIN_MAIL_FOOD_RESTOCK_FLOOR : carriedFood >= GOBLIN_MAIL_FOOD_TARGET;
+    if (!inGoblinMailField(snap.tile) || !foodReady) {
+        resetGoblinMailCombat();
+    }
     if (foodReady) {
-        const makeMailSpace = foodAcquisitionSpace(snap, Math.max(1, need) + (heldCoins >= GOBLIN_DIPLOMACY_QUEST_COIN_RESERVE || heldCoins > 0 ? 0 : 1));
+        const makeMailSpace = foodAcquisitionSpace(snap, Math.max(1, need) + (heldCoins > 0 ? 0 : 1));
         if (makeMailSpace) {
             return makeMailSpace;
         }
@@ -357,26 +381,24 @@ export function goblinMailGatherStep(snap: QuestSnapshot, need = 1): QuestStep {
 }
 
 async function farmGoblinMail(log: (m: string) => void): Promise<boolean> {
+    const owner = Game.myName();
+    if (goblinMailOwner !== owner || !inGoblinMailField(Game.tile())) {
+        resetGoblinMailCombat();
+        goblinMailOwner = owner;
+    }
     const drop = GroundItems.query().name('Goblin mail').within(15).nearest();
     if (drop) {
-        goblinMailTargetIndex = null;
-        goblinMailTargetEngaged = false;
-        goblinMailLastAttackAt = 0;
+        resetGoblinMailCombat();
         const before = Inventory.count('Goblin mail');
         if (!(await drop.interact('Take'))) {
             return false;
         }
         return Execution.delayUntil(() => Inventory.count('Goblin mail') > before, 6000);
     }
-    const releaseGoblin = (): void => {
-        goblinMailTargetIndex = null;
-        goblinMailTargetEngaged = false;
-        goblinMailLastAttackAt = 0;
-    };
     const rejectGoblin = (goblin: Npc): void => {
         goblinMailRejectedTargetIndex = goblin.index;
         goblinMailRejectedUntil = performance.now() + GOBLIN_REJECT_MS;
-        releaseGoblin();
+        releaseGoblinMailTarget();
     };
     const trackedGoblin = (): Npc | null => goblinMailTargetIndex === null
         ? null
@@ -385,15 +407,29 @@ async function farmGoblinMail(log: (m: string) => void): Promise<boolean> {
             && npc.actions().some(action => /^attack$/i.test(action))
             && npc.distance() <= 15
             && npc.tile().distanceTo(GOBLIN_FARM) <= 18) ?? null);
+    const hadEngagedTarget = goblinMailTargetIndex !== null && goblinMailTargetEngaged;
     let goblin = trackedGoblin();
+    if (!goblin && hadEngagedTarget) {
+        await Sustain.run();
+        await Execution.delayTicks(2);
+        releaseGoblinMailTarget();
+        return false;
+    }
     const attacker = Npcs.query().name('Goblin').action('Attack').within(15)
         .where(npc => npc.targetsMe() && npc.tile().distanceTo(GOBLIN_FARM) <= 18).nearest();
     if (attacker && (attacker.index !== goblinMailTargetIndex || goblin === null)) {
         goblinMailTargetIndex = attacker.index;
         goblinMailTargetEngaged = false;
         goblinMailLastAttackAt = 0;
+        goblinMailDisengagedAt = 0;
         goblin = attacker;
         log(`Goblin ${attacker.index} attacked first — switching the lock to it`);
+    }
+    if (goblin && (!goblin.valid() || (goblin.health === 0 && goblin.snap.totalHealth > 0))) {
+        await Sustain.run();
+        await Execution.delayTicks(2);
+        releaseGoblinMailTarget();
+        return false;
     }
     if (goblin && (goblin.targetsAnotherPlayer()
         || (goblin.inCombat && !goblinMailTargetEngaged && !goblin.targetsMe() && !Game.inCombat()))) {
@@ -402,7 +438,15 @@ async function farmGoblinMail(log: (m: string) => void): Promise<boolean> {
         goblin = null;
     }
     if (goblin && goblinMailTargetEngaged && !Game.inCombat() && !goblin.targetsMe()) {
-        log(`combat with Goblin ${goblin.index} ended — choosing another target`);
+        if (goblinMailDisengagedAt === 0) {
+            goblinMailDisengagedAt = performance.now();
+        }
+        if (performance.now() - goblinMailDisengagedAt < GOBLIN_DISENGAGE_GRACE_MS) {
+            await Sustain.run();
+            await Execution.delayTicks(1);
+            return false;
+        }
+        log(`combat with live Goblin ${goblin.index} made no progress for ${GOBLIN_DISENGAGE_GRACE_MS / 1000}s — choosing another target`);
         rejectGoblin(goblin);
         goblin = null;
     }
@@ -414,19 +458,20 @@ async function farmGoblinMail(log: (m: string) => void): Promise<boolean> {
             goblinMailTargetIndex = goblin.index;
             goblinMailTargetEngaged = false;
             goblinMailLastAttackAt = 0;
+            goblinMailDisengagedAt = 0;
             log(`holding Goblin ${goblin.index} until it dies`);
         }
     }
     if (goblin) {
-        if (goblin.health === 0 && goblin.snap.totalHealth > 0) {
-            await Execution.delayUntil(() => trackedGoblin() === null, 6000);
-            releaseGoblin();
+        if (Game.inCombat() || goblin.targetsMe()) {
+            goblinMailTargetEngaged = true;
+            goblinMailDisengagedAt = 0;
+            await Sustain.run();
+            await Execution.delayTicks(1);
             return false;
         }
-        if (Game.inCombat()) {
-            goblinMailTargetEngaged = true;
-        }
         if (performance.now() - goblinMailLastAttackAt < GOBLIN_REATTACK_MS) {
+            await Sustain.run();
             await Execution.delayTicks(2);
             return false;
         }
@@ -437,10 +482,17 @@ async function farmGoblinMail(log: (m: string) => void): Promise<boolean> {
             return false;
         }
         goblinMailLastAttackAt = performance.now();
-        const attackObserved = await Execution.delayUntil(() => {
+        const attackDeadline = performance.now() + 8000;
+        let attackObserved = false;
+        while (performance.now() < attackDeadline) {
+            await Sustain.run();
             const live = trackedGoblin();
-            return live === null || Game.inCombat() || live.targetsAnotherPlayer();
-        }, 8000);
+            if (live === null || Game.inCombat() || live.targetsMe() || live.targetsAnotherPlayer()) {
+                attackObserved = true;
+                break;
+            }
+            await Execution.delayTicks(1);
+        }
         if (!attackObserved) {
             log(`Attack on Goblin ${goblin.index} produced no combat within 8s — choosing another target`);
             rejectGoblin(goblin);
@@ -453,13 +505,16 @@ async function farmGoblinMail(log: (m: string) => void): Promise<boolean> {
             return false;
         }
         if (live === null) {
-            releaseGoblin();
+            releaseGoblinMailTarget();
             return false;
         }
         goblinMailTargetEngaged ||= Game.inCombat() || live.targetsMe();
+        if (goblinMailTargetEngaged) {
+            goblinMailDisengagedAt = 0;
+        }
         return false;
     }
-    releaseGoblin();
+    releaseGoblinMailTarget();
     await Traversal.walkResilient(GOBLIN_FARM, { radius: 4, attempts: 2, timeoutMs: 90_000, log });
     return false;
 }
@@ -526,7 +581,11 @@ async function makeOrangeDye(log: (m: string) => void): Promise<boolean> {
 }
 
 export function decide(snap: QuestSnapshot): QuestStep {
-    if (snap.journal === 'complete') { return { kind: 'done' }; }
+    if (snap.journal === 'complete') {
+        resetGoblinMailCombat();
+        goblinMailOwner = null;
+        return { kind: 'done' };
+    }
     if (snap.journal === 'unknown') { return { kind: 'wait', reason: 'quest journal not loaded' }; }
     if (snap.journal === 'notStarted') { return { kind: 'talk', stop: BARTENDER }; }
 
@@ -548,7 +607,9 @@ export const goblindiplomacy: QuestModule = {
     record: QUESTS.find(r => r.id === 'gobdip')!,
     bank: new Tile(3093, 3243, 0),
     sustain: { foods: [FALLBACK_FOOD], eatBelowHp: 0.6 },
-    tools: ['goblin mail', 'dye', 'woad', 'redberries', 'onion', 'coins', 'kebab'],
+    get tools() {
+        return ['goblin mail', 'dye', 'woad', 'redberries', 'onion', 'coins', ...combatFoodNames().map(name => name.toLowerCase())];
+    },
     grind: ['Goblin'],
     gather: {
         'goblin mail': goblinMailGatherStep,

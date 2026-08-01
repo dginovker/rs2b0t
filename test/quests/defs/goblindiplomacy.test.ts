@@ -63,6 +63,17 @@ describe('goblindiplomacy goblin-mail survival', () => {
         expect(goblindiplomacy.tools).toContain('kebab');
     });
 
+    test('preserves the configured quest food during spillover banking', () => {
+        QuestFood.name = 'Trout';
+        expect(goblindiplomacy.tools).toContain('trout');
+        const step = goblinMailGatherStep({
+            ...snap('inProgress', [['trout', 20], ['bronze dagger', 1]]),
+            bankKnown: true,
+            freeSlots: 0
+        });
+        expect(step.kind === 'deposit' && step.keep).toContain('trout');
+    });
+
     test('checks the bank before assuming a fresh account has no food or cash', () => {
         const step = goblinMailGatherStep(snap('inProgress'));
         expect(step.kind).toBe('scanBank');
