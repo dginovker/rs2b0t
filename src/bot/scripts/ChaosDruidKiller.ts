@@ -26,6 +26,7 @@ import {
     chaosDruidEatReady,
     chaosDruidFoodShortfall,
     chaosDruidLootSpaceAction,
+    chaosDruidRespawned,
     inChaosDruidField,
     inEdgevilleDungeon,
     isChaosDruidLoot,
@@ -76,39 +77,27 @@ const INTERMEDIATE_GATE = new Tile(3103, 9909, 0);
 const WILDERNESS_GATE = new Tile(3130, 9914, 0);
 const COMBAT_SKILLS = ['attack', 'strength', 'defence', 'hitpoints'];
 
-let FOOD_NAME = 'Lobster';
-let FOOD_WITHDRAW = 12;
-let EAT_HP = 0.55;
-let PANIC_HP = 0.35;
-
-function foodCount(): number {
-    return countFood(Inventory.items(), FOOD_NAME);
-}
-
-function selectedFood(): InvItem | null {
-    if (Bank.isOpen()) {
-        return null;
-    }
-    return Inventory.items().find(item => isFoodItem(item.name, FOOD_NAME)) ?? null;
-}
-
 function hpFraction(): number {
     return Skills.hpFraction();
 }
 
 function bankReason(bot: ChaosDruidKiller): ChaosDruidBankReason | null {
+    bot.observeLifecycle();
     return chaosDruidBankReason({
-        onSurface: chaosDruidArea(Game.tile()) === 'surface',
         tripPrepared: bot.tripPrepared,
         inventoryFull: Inventory.isFull(),
-        foodCount: foodCount(),
+        wantedLootVisible: GroundItems.query()
+            .where(item => isChaosDruidLoot(item.name))
+            .within(CHAOS_DRUID_FIELD_RADIUS + 3)
+            .nearest() !== null,
+        foodCount: bot.foodCount(),
         hpFraction: hpFraction(),
-        panicHpFraction: PANIC_HP
+        panicHpFraction: bot.panicHpFraction
     });
 }
 
 async function eatOnce(bot: ChaosDruidKiller): Promise<boolean> {
-    const food = selectedFood();
+    const food = bot.selectedFood();
     if (!food) {
         return false;
     }
@@ -122,13 +111,13 @@ async function eatOnce(bot: ChaosDruidKiller): Promise<boolean> {
     return Execution.delayUntil(
         () => Skills.effective('hitpoints') > beforeHp
             || Inventory.used() < beforeUsed
-            || selectedFood()?.name !== beforeName,
+            || bot.selectedFood()?.name !== beforeName,
         4000
     );
 }
 
 async function dropOneFood(bot: ChaosDruidKiller): Promise<boolean> {
-    const food = selectedFood();
+    const food = bot.selectedFood();
     if (!food) {
         return false;
     }
@@ -148,6 +137,10 @@ async function dropOneFood(bot: ChaosDruidKiller): Promise<boolean> {
 export default class ChaosDruidKiller extends TaskBot {
     override loopDelay = 600;
 
+    foodName = 'Lobster';
+    foodWithdraw = 12;
+    eatHpFraction = 0.55;
+    panicHpFraction = 0.35;
     tripPrepared = false;
     parked = false;
     died = false;
@@ -160,31 +153,29 @@ export default class ChaosDruidKiller extends TaskBot {
     private status = 'starting';
     private startedAt = Date.now();
     private xpAtStart = 0;
+    private lastArea = chaosDruidArea(null);
 
     override async onStart(): Promise<void> {
         await Execution.delayUntil(() => Game.ingame() && Game.tile() !== null, 0);
 
-        FOOD_NAME = this.settings.str('food', 'Lobster');
-        FOOD_WITHDRAW = this.settings.num('foodWithdraw', 12);
-        EAT_HP = this.settings.num('eatAtHp', 55) / 100;
-        PANIC_HP = this.settings.num('panicHp', 35) / 100;
+        this.foodName = this.settings.str('food', 'Lobster');
+        this.foodWithdraw = this.settings.num('foodWithdraw', 12);
+        this.eatHpFraction = this.settings.num('eatAtHp', 55) / 100;
+        this.panicHpFraction = this.settings.num('panicHp', 35) / 100;
         this.startedAt = Date.now();
         this.xpAtStart = COMBAT_SKILLS.reduce((sum, skill) => sum + Skills.xp(skill), 0);
         const startingArea = chaosDruidArea(Game.tile());
-        this.tripPrepared = startingArea === 'edgeville-dungeon';
+        this.lastArea = startingArea;
+        this.tripPrepared = startingArea === 'edgeville-dungeon' && this.foodCount() >= this.foodWithdraw;
 
-        this.log(`ChaosDruidKiller starting — ${FOOD_WITHDRAW} ${FOOD_NAME}, eat <${Math.round(EAT_HP * 100)}%, bank without food <${Math.round(PANIC_HP * 100)}%, field ${FIELD.x},${FIELD.z}`);
+        this.log(`ChaosDruidKiller starting — ${this.foodWithdraw} ${this.foodName}, eat <${Math.round(this.eatHpFraction * 100)}%, bank without food <${Math.round(this.panicHpFraction * 100)}%, field ${FIELD.x},${FIELD.z}`);
         if (startingArea === 'other-underground') {
             this.park('started in a different underground map. Reach the surface or Edgeville dungeon, then restart; the Edgeville ladder cannot exit this dungeon.');
         }
 
         this.on('chat.message', event => {
             if (/oh dear.*you are dead/i.test(event.text)) {
-                this.died = true;
-                this.tripPrepared = false;
-                this.deaths++;
-                this.setStatus('died — restocking');
-                this.log('death detected — will bank for a fresh trip before returning');
+                this.noteDeath('death message detected');
             }
         });
 
@@ -217,7 +208,7 @@ export default class ChaosDruidKiller extends TaskBot {
         const gained = COMBAT_SKILLS.reduce((sum, skill) => sum + Skills.xp(skill), 0) - this.xpAtStart;
         const xph = mins > 0.5 ? `${((gained / mins) * 60 / 1000).toFixed(1)}k` : '—';
         p.row(`Runtime: ${fmtDuration(mins)}`, `Kills: ${this.kills}`, `XP/hr: ${xph}`);
-        p.row(`Looted: ${this.looted}`, `Food: ${foodCount()}`, `Banks: ${this.trips}`);
+        p.row(`Looted: ${this.looted}`, `Food: ${this.foodCount()}`, `Banks: ${this.trips}`);
         if (this.foodSacrificed > 0 || this.deaths > 0) {
             p.row(`Food used for space: ${this.foodSacrificed}`, `Deaths: ${this.deaths}`);
         }
@@ -247,12 +238,43 @@ export default class ChaosDruidKiller extends TaskBot {
         this.foodSacrificed++;
     }
 
+    foodCount(): number {
+        return countFood(Inventory.items(), this.foodName);
+    }
+
+    selectedFood(): InvItem | null {
+        if (Bank.isOpen()) {
+            return null;
+        }
+        return Inventory.items().find(item => isFoodItem(item.name, this.foodName)) ?? null;
+    }
+
+    observeLifecycle(): void {
+        const area = chaosDruidArea(Game.tile());
+        if (chaosDruidRespawned(this.lastArea, area, this.tripPrepared)) {
+            this.noteDeath('surface respawn detected after leaving the dungeon unexpectedly');
+        }
+        if (area !== 'unknown') {
+            this.lastArea = area;
+        }
+    }
+
+    private noteDeath(source: string): void {
+        if (!this.died) {
+            this.deaths++;
+        }
+        this.died = true;
+        this.tripPrepared = false;
+        this.setStatus('died — restocking');
+        this.log(`${source} — will bank for a fresh trip before returning`);
+    }
+
     park(reason: string): void {
         if (this.parked) {
             return;
         }
         this.parked = true;
-        this.setStatus('stopped — bank needs food');
+        this.setStatus(`stopped — ${reason}`);
         this.log(`STOPPED: ${reason}`);
     }
 
@@ -419,19 +441,19 @@ export default class ChaosDruidKiller extends TaskBot {
         await Bank.depositInventory();
         await Execution.delayTicks(1);
 
-        const shortfall = chaosDruidFoodShortfall(FOOD_WITHDRAW, 0);
+        const shortfall = chaosDruidFoodShortfall(this.foodWithdraw, 0);
         if (shortfall > 0) {
             await Execution.delayUntil(() => Bank.loaded(), 4000);
-            const available = Bank.count(FOOD_NAME);
+            const available = Bank.count(this.foodName);
             if (available < shortfall) {
                 await Bank.close();
-                this.park(`configured for ${FOOD_WITHDRAW} ${FOOD_NAME}, but only ${available} are in the bank. Add food, then restart.`);
+                this.park(`configured for ${this.foodWithdraw} ${this.foodName}, but only ${available} are in the bank. Add food, then restart.`);
                 return false;
             }
-            this.setStatus(`withdrawing ${shortfall} ${FOOD_NAME}`);
-            if (!(await Bank.withdrawX(FOOD_NAME, shortfall))) {
+            this.setStatus(`withdrawing ${shortfall} ${this.foodName}`);
+            if (!(await Bank.withdrawX(this.foodName, shortfall))) {
                 await Bank.close();
-                this.log(`withdraw of ${shortfall} ${FOOD_NAME} did not complete — will retry`);
+                this.log(`withdraw of ${shortfall} ${this.foodName} did not complete — will retry`);
                 return false;
             }
         }
@@ -440,15 +462,15 @@ export default class ChaosDruidKiller extends TaskBot {
             this.log('bank did not close cleanly — will retry before walking');
             return false;
         }
-        if (foodCount() < FOOD_WITHDRAW) {
-            this.park(`restock verification failed: expected ${FOOD_WITHDRAW} ${FOOD_NAME}, found ${foodCount()}. Add food, then restart.`);
+        if (this.foodCount() < this.foodWithdraw) {
+            this.park(`restock verification failed: expected ${this.foodWithdraw} ${this.foodName}, found ${this.foodCount()}. Add food, then restart.`);
             return false;
         }
 
         this.tripPrepared = true;
         this.died = false;
         this.countTrip();
-        this.log(`banked the haul and restocked exactly ${foodCount()} ${FOOD_NAME}`);
+        this.log(`banked the haul and restocked exactly ${this.foodCount()} ${this.foodName}`);
         return true;
     }
 
@@ -504,8 +526,8 @@ class Eat implements Task {
         return chaosDruidEatReady({
             bankOpen: Bank.isOpen(),
             hpFraction: hpFraction(),
-            eatHpFraction: EAT_HP,
-            foodCount: foodCount()
+            eatHpFraction: this.bot.eatHpFraction,
+            foodCount: this.bot.foodCount()
         });
     }
     async execute(): Promise<void> {
@@ -560,7 +582,7 @@ class Loot implements Task {
                     drop.name,
                     Inventory.items().map(item => item.name)
                 ),
-                foodCount: foodCount(),
+                foodCount: this.bot.foodCount(),
                 hp: Skills.effective('hitpoints'),
                 maxHp: Skills.level('hitpoints')
             });
@@ -640,10 +662,10 @@ class Fight implements Task {
             if (this.bot.died || ChatDialog.canContinue()) {
                 return;
             }
-            if (hpFraction() < EAT_HP && foodCount() > 0) {
+            if (hpFraction() < this.bot.eatHpFraction && this.bot.foodCount() > 0) {
                 await eatOnce(this.bot);
             }
-            if (foodCount() === 0 && hpFraction() <= PANIC_HP) {
+            if (this.bot.foodCount() === 0 && hpFraction() <= this.bot.panicHpFraction) {
                 this.bot.log(`out of food at ${Math.round(hpFraction() * 100)}% HP — breaking off to bank`);
                 return;
             }

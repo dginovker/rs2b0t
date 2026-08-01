@@ -11,15 +11,16 @@ import {
     chaosDruidEatReady,
     chaosDruidFoodShortfall,
     chaosDruidLootSpaceAction,
+    chaosDruidRespawned,
     inChaosDruidField,
     inEdgevilleDungeon,
     isChaosDruidLoot
 } from '#/bot/scripts/ChaosDruidLogic.js';
 
 const trip = (overrides: Partial<Parameters<typeof chaosDruidBankReason>[0]> = {}) => ({
-    onSurface: false,
     tripPrepared: true,
     inventoryFull: false,
+    wantedLootVisible: false,
     foodCount: 12,
     hpFraction: 1,
     panicHpFraction: 0.35,
@@ -40,15 +41,24 @@ describe('ChaosDruid settings', () => {
 
 describe('ChaosDruid trip lifecycle', () => {
     test('a surface start always prepares a clean, configured trip at the bank', () => {
-        expect(chaosDruidBankReason(trip({ onSurface: true, tripPrepared: false }))).toBe('prepare-trip');
+        expect(chaosDruidBankReason(trip({ tripPrepared: false }))).toBe('prepare-trip');
     });
 
     test('a prepared surface trip does not loop back into banking', () => {
-        expect(chaosDruidBankReason(trip({ onSurface: true, tripPrepared: true }))).toBeNull();
+        expect(chaosDruidBankReason(trip({ tripPrepared: true }))).toBeNull();
+    });
+
+    test('an underfed dungeon start leaves immediately to prepare a trip', () => {
+        expect(chaosDruidBankReason(trip({ tripPrepared: false, foodCount: 0 }))).toBe('prepare-trip');
     });
 
     test('a full pack ends the trip after all food slots became loot slots', () => {
         expect(chaosDruidBankReason(trip({ inventoryFull: true, foodCount: 0 }))).toBe('loot-full');
+    });
+
+    test('a full pack banks when no wanted drop can consume excess food', () => {
+        expect(chaosDruidBankReason(trip({ inventoryFull: true, foodCount: 2, wantedLootVisible: false }))).toBe('loot-full');
+        expect(chaosDruidBankReason(trip({ inventoryFull: true, foodCount: 2, wantedLootVisible: true }))).toBeNull();
     });
 
     test('running out of food alone is not an early retreat while HP is safe', () => {
@@ -164,5 +174,11 @@ describe('Chaos-druid loot and field', () => {
         expect(inEdgevilleDungeon(taverleyDungeon)).toBe(false);
         expect(chaosDruidArea({ x: 3096, z: 3468, level: 0 })).toBe('surface');
         expect(chaosDruidArea(null)).toBe('unknown');
+    });
+
+    test('detects a missed death message from an unexpected surface respawn', () => {
+        expect(chaosDruidRespawned('edgeville-dungeon', 'surface', true)).toBe(true);
+        expect(chaosDruidRespawned('edgeville-dungeon', 'surface', false)).toBe(false);
+        expect(chaosDruidRespawned('edgeville-dungeon', 'edgeville-dungeon', true)).toBe(false);
     });
 });

@@ -143,6 +143,8 @@ Tags: `combat`, `clues`, `banking`, `afk`
 
 Kills Chaos druids in the Edgeville dungeon, loots herbs/law runes, banks them
 
+Loot is fixed to exact `Herb` and `Law rune` names; other drops are ignored.
+
 Tags: `wilderness`, `edgeville`, `herbs`, `banking`
 
 | Setting | Type | Default | Notes |

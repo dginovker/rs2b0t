@@ -16,9 +16,9 @@ export type ChaosDruidArea = 'surface' | 'edgeville-dungeon' | 'other-undergroun
 export type ChaosDruidBankReason = 'prepare-trip' | 'loot-full' | 'low-health';
 
 export interface ChaosDruidTripState {
-    onSurface: boolean;
     tripPrepared: boolean;
     inventoryFull: boolean;
+    wantedLootVisible: boolean;
     foodCount: number;
     hpFraction: number;
     panicHpFraction: number;
@@ -26,10 +26,10 @@ export interface ChaosDruidTripState {
 
 /** The three explicit ends to a Chaos-druid trip. */
 export function chaosDruidBankReason(state: ChaosDruidTripState): ChaosDruidBankReason | null {
-    if (state.onSurface && !state.tripPrepared) {
+    if (!state.tripPrepared) {
         return 'prepare-trip';
     }
-    if (state.inventoryFull && state.foodCount === 0) {
+    if (state.inventoryFull && (state.foodCount === 0 || !state.wantedLootVisible)) {
         return 'loot-full';
     }
     if (state.foodCount === 0 && state.hpFraction <= state.panicHpFraction) {
@@ -98,6 +98,11 @@ export function chaosDruidArea(tile: WorldTile | null): ChaosDruidArea {
         return 'edgeville-dungeon';
     }
     return tile.z > 6400 ? 'other-underground' : 'surface';
+}
+
+/** Detect a missed death message from the otherwise impossible dungeon-to-surface jump. */
+export function chaosDruidRespawned(previous: ChaosDruidArea, current: ChaosDruidArea, tripPrepared: boolean): boolean {
+    return tripPrepared && previous === 'edgeville-dungeon' && current === 'surface';
 }
 
 export function inEdgevilleDungeon(tile: WorldTile | null): boolean {
