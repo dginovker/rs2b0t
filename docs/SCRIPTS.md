@@ -141,9 +141,7 @@ Tags: `combat`, `clues`, `banking`, `afk`
 
 ### ChaosDruidKiller
 
-Kills Chaos druids in the Edgeville dungeon, loots herbs/law runes, banks them
-
-Loot is fixed to exact `Herb` and `Law rune` names; other drops are ignored.
+Kills Chaos druids in the Edgeville dungeon, loots exact Herb/Law rune names, banks them
 
 Tags: `wilderness`, `edgeville`, `herbs`, `banking`
 
