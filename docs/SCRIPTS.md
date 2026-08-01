@@ -120,7 +120,14 @@ Tags: `combat`, `clues`, `banking`, `afk`
 | `spot` | string | `"Start position"` | Killing spot — one of: Start position, Custom coordinates |
 | `coordinates` | tile | `{"x":3273,"z":3427,"level":0}` | Killing coordinates (x,z) |
 | `leashRadius` | number (2–30) | `8` | Leash radius (tiles) |
-| `combatStyle` | string | `"strength"` | Combat style — one of: attack, strength, controlled, defence |
+| `combatStyle` | string | `"melee"` | Combat style — one of: melee, mage, range |
+| `meleeStyle` | string | `"strength"` | Melee style — one of: attack, strength, controlled, defence |
+| `spell` | string | `"Fire Strike"` | Autocast spell — one of: Wind Strike, Water Strike, Earth Strike, Fire Strike, Wind Bolt, Water Bolt, Earth Bolt, Fire Bolt, Wind Blast, Water Blast, Earth Blast, Fire Blast, Wind Wave, Water Wave, Earth Wave, Fire Wave |
+| `runesWithdraw` | number (1–1000) | `150` | Casts of runes per bank trip |
+| `rangeStyle` | string | `"rapid"` | Ranged style — one of: accurate, rapid, longrange |
+| `ammo` | string | `"Bronze arrow"` | Ammo (withdrawn from bank) |
+| `ammoWithdraw` | number (1–5000) | `500` | Ammo per bank trip |
+| `ammoRestockBelow` | number (0–100) | `25` | Bank for ammo below % |
 | `food` | string | `"Trout"` | Food (withdrawn from bank) |
 | `foodWithdraw` | number (0–27) | `10` | Food to carry |
 | `eatAtHp` | number (0–100) | `50` | Eat below HP% |
@@ -140,14 +147,10 @@ Tags: `wilderness`, `edgeville`, `herbs`, `banking`
 
 | Setting | Type | Default | Notes |
 |---|---|---|---|
-| `loot` | string | `"herb, law rune"` | Loot (name contains, comma-sep) |
-| `leashRadius` | number (3–20) | `8` | Leash radius (tiles) |
-| `fightHpGate` | number (0–100) | `40` | Stop fighting below HP% |
-| `restUntilHp` | number (0–100) | `65` | Rest until HP% |
-| `bankStrategy` | string | `"Off"` | Periodic bank — one of: Off, Loot count, Time, Either |
-| `bankEveryItems` | number (1–27) | `15` | Bank at N loot items |
-| `bankEveryMinutes` | number (1–120) | `10` | Bank every N minutes |
-| `bankCommonJunk` | boolean | `true` | Also bank gems/fruit/beer/kebabs/caskets |
+| `food` | string | `"Lobster"` | Food — one of: Lobster, Swordfish, Tuna, Salmon, Trout, Pike, Bass, Herring, Sardine, Anchovies, Shrimps, Cooked meat, Cooked chicken, Bread, Stew, Cake, Chocolate cake, Plain pizza, Meat pizza, Anchovy pizza, Pineapple pizza, Redberry pie, Meat pie, Apple pie |
+| `foodWithdraw` | number (1–27) | `12` | Food per trip |
+| `eatAtHp` | number (1–99) | `55` | Eat below HP% |
+| `panicHp` | number (1–98) | `35` | Bank below HP% (no food) |
 
 ### ChickenKiller
 
