@@ -5,7 +5,7 @@
 
 # Bundled scripts
 
-The client ships **43 scripts** across 19 categories. They double as worked
+The client ships **44 scripts** across 19 categories. They double as worked
 examples of the [scripting API](API.md) — the source for each is under
 [`src/bot/scripts/`](../src/bot/scripts/).
 
@@ -14,7 +14,7 @@ Settings listed here are the parameters the panel exposes before you start a scr
 ## Contents
 
 - [Agility](#agility) — 3
-- [Combat](#combat) — 9
+- [Combat](#combat) — 10
 - [Cooking](#cooking) — 1
 - [Crafting](#crafting) — 5
 - [Firemaking](#firemaking) — 1
@@ -252,6 +252,23 @@ Tags: `wilderness`, `dragons`, `hides`
 | `anchorTile` | tile | `{"x":3096,"z":3814,"level":0}` | Dragon field tile |
 | `bankTile` | tile | `{"x":3094,"z":3493,"level":0}` | Bank stand tile (Edgeville) |
 
+### HillGiant
+
+Edgeville dungeon hill giants — fetches the brass key if the bank has none, unlocks the hut, and banks limpwurt roots and big bones at Varrock East
+
+Tags: `combat`, `giants`, `edgeville`, `varrock`, `banking`, `looting`
+
+| Setting | Type | Default | Notes |
+|---|---|---|---|
+| `meleeStyle` | string | `"strength"` | Melee style — one of: attack, strength, controlled, defence |
+| `food` | string | `"Trout"` | Food — one of: Lobster, Swordfish, Tuna, Salmon, Trout, Pike, Bass, Herring, Sardine, Anchovies, Shrimps, Cooked meat, Cooked chicken, Bread, Stew, Cake, Chocolate cake, Plain pizza, Meat pizza, Anchovy pizza, Pineapple pizza, Redberry pie, Meat pie, Apple pie |
+| `foodWithdraw` | number (1–27) | `12` | Food per trip |
+| `eatAtHp` | number (1–99) | `50` | Eat below HP% |
+| `loot` | string[] | `["Limpwurt root","Big bones"]` | Loot to pick up — one of: Beer, Big bones, Body talisman, Chaos rune, Chaos talisman, Coins, Cosmic rune, Death rune, Dragon spear, Fire rune, Half of a key, Herb, Iron arrow, Iron dagger, Iron full helm, Iron kiteshield, Law rune, Limpwurt root, Mind rune, Nature rune, Nature talisman, Rune javelin, Rune spear, Shield left half, Steel arrow, Steel longsword, Uncut diamond, Uncut emerald, Uncut ruby, Uncut sapphire, Water rune |
+| `bankCommonJunk` | boolean | `true` | Also grab shared gems/junk |
+| `buryBones` | boolean | `false` | Bury big bones |
+| `lootSlots` | number (1–27) | `14` | Bank after this many loot slots |
+
 ### MossGiant
 
 Moss giants N of Ardougne: range/mage safespot or melee, banks all loot
@@ -448,7 +465,7 @@ Tags: `gathering`, `drop`, `banking`, `cooking`
 | `burntPolicy` | string | `"Drop"` | Burnt fish — one of: Drop, Bank |
 | `bankRawBeforeCook` | number (1–) | `56` | Bank N raw before cook |
 | `afterCookCycle` | string | `"Stop"` | After cook cycle — one of: Stop, Continue |
-| `muleMode` | string | `"Off"` | Mule mode — one of: Off, Gatherer, Mule |
+| `muleMode` | string | `"Off"` | Mule mode — one of: Off, Gatherer, Mule, Cooker, Supplier |
 | `mulePartner` | string | `""` | Mule partner name(s) |
 | `toolAcquire` | string | `"Off"` | Acquire tools — one of: Off, Buy / repair |
 | `forgetfulBank` | boolean | `false` | Forgetful bank exits |
@@ -505,6 +522,7 @@ Tags: `varrock`, `mining`, `banking`, `afk`
 | Setting | Type | Default | Notes |
 |---|---|---|---|
 | `pickaxe` | string | `"Best available"` | Pickaxe — one of: Best available, Rune, Adamant, Mithril, Steel, Iron, Bronze |
+| `purgePackOnStart` | boolean | `true` | Bank junk on start |
 
 ### Miner
 
@@ -518,7 +536,7 @@ Tags: `gathering`, `banking`, `drop`
 | `leashRadius` | number (2–64) | `10` | Leash radius (tiles) |
 | `location` | string | `"Auto"` | Location / full inventory — one of: Auto, Southwest Varrock Mine, Southeast Varrock Mine, Rimmington Mine, Dwarven Mine, Fight Arena Mine, Al Kharid Mine, Mining Guild, Crafting Guild, Coal Trucks, Barbarian Village, North Brimhaven Mine, Shilo Village, West Lumbridge Swamp Mine, Grand Tree Mine, Desert Mining Camp, Lava Maze Runite Mine, Heroes Guild, Legends Guild Iron (west), Legends Guild Iron (east), None |
 | `tickManip` | string | `"Off"` | Tick manip — one of: Off |
-| `muleMode` | string | `"Off"` | Mule mode — one of: Off, Gatherer, Mule |
+| `muleMode` | string | `"Off"` | Mule mode — one of: Off, Gatherer, Mule, Cooker, Supplier |
 | `mulePartner` | string | `""` | Mule partner name(s) |
 | `toolAcquire` | string | `"Off"` | Acquire tools — one of: Off, Buy / repair |
 | `forgetfulBank` | boolean | `false` | Forgetful bank exits |
@@ -774,7 +792,7 @@ Tags: `gathering`, `banking`, `drop`, `firemaking`
 | `tickManip` | string | `"Off"` | Tick manip — one of: Off |
 | `burnMode` | string | `"Off"` | Burn mode — one of: Off, Chop then burn |
 | `fireSpot` | string | `"Auto"` | Fire spot — one of: Auto, Varrock East, Varrock West, Draynor, Seers |
-| `muleMode` | string | `"Off"` | Mule mode — one of: Off, Gatherer, Mule |
+| `muleMode` | string | `"Off"` | Mule mode — one of: Off, Gatherer, Mule, Cooker, Supplier |
 | `mulePartner` | string | `""` | Mule partner name(s) |
 | `toolAcquire` | string | `"Off"` | Acquire tools — one of: Off, Buy / repair |
 | `forgetfulBank` | boolean | `false` | Forgetful bank exits |
