@@ -43,6 +43,7 @@ import WildyAgility, { WILDY_AGILITY_SETTINGS } from './WildyAgility.js';
 import SmelterBot, { SETTINGS as SMELTER_SETTINGS } from './SmelterBot.js';
 import HillGiant, { HILL_GIANT_SETTINGS } from './HillGiant.js';
 import TannerBot, { TANNER_SETTINGS } from './TannerBot.js';
+import VialFiller, { VIAL_FILLER_SETTINGS } from './VialFiller.js';
 import LeatherCrafter, { CRAFTER_SETTINGS } from './LeatherCrafter.js';
 import Firemaker, { FIREMAKER_SETTINGS } from './Firemaker.js';
 import SmithingBot, { SETTINGS as SMITHING_SETTINGS } from './SmithingBot.js';
@@ -570,6 +571,15 @@ ScriptRegistry.register({
     tags: ['combat', 'giants', 'edgeville', 'varrock', 'banking', 'looting'],
     settingsSchema: HILL_GIANT_SETTINGS,
     create: () => new HillGiant()
+});
+
+ScriptRegistry.register({
+    name: 'VialFiller',
+    description: 'Falador vial-filling loop — banks empty vials, fills them one by one at the fountain, and can restock from Jatix in Taverley every Nth trip',
+    category: 'Herblore',
+    tags: ['falador', 'vials', 'water', 'banking', 'afk'],
+    settingsSchema: VIAL_FILLER_SETTINGS,
+    create: () => new VialFiller()
 });
 
 ScriptRegistry.register({

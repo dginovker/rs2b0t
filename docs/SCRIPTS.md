@@ -5,7 +5,7 @@
 
 # Bundled scripts
 
-The client ships **44 scripts** across 19 categories. They double as worked
+The client ships **45 scripts** across 19 categories. They double as worked
 examples of the [scripting API](API.md) — the source for each is under
 [`src/bot/scripts/`](../src/bot/scripts/).
 
@@ -20,7 +20,7 @@ Settings listed here are the parameters the panel exposes before you start a scr
 - [Firemaking](#firemaking) — 1
 - [Fishing](#fishing) — 1
 - [Fletching](#fletching) — 2
-- [Herblore](#herblore) — 1
+- [Herblore](#herblore) — 2
 - [Mining](#mining) — 3
 - [Money making](#money-making) — 2
 - [Navigation](#navigation) — 1
@@ -505,6 +505,20 @@ Tags: `fletching`, `darts`, `members`, `fast`
 Infinite Herblore grind at the fungus-covered cavern wall under the Karamja jungle — searches, identifies, and drops Rogues purse on the tick. Walks itself there; needs Herblore 3 and Jungle Potion past the point where Trufitus asks for the purse
 
 Tags: `herblore`, `karamja`, `members`, `afk`
+
+### VialFiller
+
+Falador vial-filling loop — banks empty vials, fills them one by one at the fountain, and can restock from Jatix in Taverley every Nth trip
+
+Tags: `falador`, `vials`, `water`, `banking`, `afk`
+
+| Setting | Type | Default | Notes |
+|---|---|---|---|
+| `bank` | string | `"Falador West"` | Which Falador bank — one of: Falador West, Falador East |
+| `buyVials` | boolean | `false` | Buy vials at Jatix? |
+| `buyEveryRuns` | number (1–50) | `5` | Shop run every N trips |
+| `buyQty` | number (1–28) | `27` | Empty vials to buy |
+| `coinsPerTrip` | number (1–100000) | `1000` | Coins to top up to |
 
 ## Mining
 
