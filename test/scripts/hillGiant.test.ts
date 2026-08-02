@@ -101,4 +101,12 @@ describe('HillGiant settings', () => {
     test('carries food by default', () => {
         expect(HILL_GIANT_SETTINGS.foodWithdraw.default).toBeGreaterThan(0);
     });
+
+    test('offers a weapon to keep wielded, so a death can re-wield it', () => {
+        // the issue asks the bot to re-equip its gear after dying; blank means
+        // "fight with whatever is already worn" rather than silently doing nothing
+        expect(HILL_GIANT_SETTINGS.weapon).toBeDefined();
+        expect(HILL_GIANT_SETTINGS.weapon.default).toBe('');
+        expect(String(HILL_GIANT_SETTINGS.weapon.help)).toMatch(/death|re-worn/i);
+    });
 });

@@ -3,7 +3,7 @@
 // down, and kill a giant. Each leg is asserted from real game state.
 //
 //   bun tools/hillgiant-test.ts [http://localhost:8888]
-import { boot, bringUpOffIsland, cheatQuiet, fail, launchBrowser, login } from './lib/harness.js';
+import { boot, bringUpOffIsland, cheatQuiet, fail, launchBrowser, login, setSettings } from './lib/harness.js';
 
 const base = process.argv[2] ?? 'http://localhost:8888';
 const user = process.argv[3] ?? `hgi${Date.now().toString(36).slice(-5)}`;
@@ -12,6 +12,7 @@ const START = { x: 3097, z: 3468 }; // Edgeville dungeon trapdoor
 interface Api {
     __rs2b0t: {
         Inventory: { count(name: string): number; contains(name: string): boolean; used(): number };
+        Equipment: { contains(name: string): boolean };
         Skills: { level(name: string): number };
         reader: { worldTile(): { x: number; z: number; level: number } | null };
     };
@@ -50,6 +51,11 @@ try {
     if (seeded.key) fail('expected to start WITHOUT a brass key');
     console.log(`seeded: ${seeded.food} trout, hp ${seeded.hp}, no brass key`);
 
+    // the weapon is seeded UNEQUIPPED: the script has to wield it itself
+    await setSettings(page, 'HillGiant', { weapon: 'Bronze scimitar' });
+    if (await page.evaluate(() => (globalThis as never as Api).__rs2b0t.Equipment.contains('Bronze scimitar'))) {
+        fail('expected the scimitar to start unequipped');
+    }
     await page.evaluate(() => {
         const g = globalThis as never as Api;
         const meta = g.rs2b0t.registry.get('HillGiant');
@@ -57,6 +63,13 @@ try {
         g.rs2b0t.runner.start(meta);
     });
     console.log('HillGiant started');
+
+    // 0. wields the weapon that was sitting loose in the pack
+    const wielded = await page
+        .waitForFunction(() => (globalThis as never as Api).__rs2b0t.Equipment.contains('Bronze scimitar'), undefined, { timeout: 60_000 })
+        .then(() => true).catch(() => false);
+    if (!wielded) fail('never wielded the Bronze scimitar sitting in the pack');
+    console.log('PASS 0/3 — wielded the Bronze scimitar from the pack');
 
     // 1. fetches the brass key from the dungeon floor
     const gotKey = await page
@@ -93,7 +106,7 @@ try {
     if (!fought) fail('never engaged a Giant in the pit');
 
     await page.evaluate(() => (globalThis as never as Api).rs2b0t.runner.stop());
-    console.log('PASS 3/3 — HillGiant fetched the key, entered via the hut, and fought in the pit');
+    console.log('PASS 3/3 — HillGiant wielded its weapon, fetched the key, entered via the hut, and fought in the pit');
 } finally {
     await browser.close();
 }

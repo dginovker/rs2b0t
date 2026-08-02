@@ -261,6 +261,7 @@ Tags: `combat`, `giants`, `edgeville`, `varrock`, `banking`, `looting`
 | Setting | Type | Default | Notes |
 |---|---|---|---|
 | `meleeStyle` | string | `"strength"` | Melee style — one of: attack, strength, controlled, defence |
+| `weapon` | string | `""` | Weapon to wield |
 | `food` | string | `"Trout"` | Food — one of: Lobster, Swordfish, Tuna, Salmon, Trout, Pike, Bass, Herring, Sardine, Anchovies, Shrimps, Cooked meat, Cooked chicken, Bread, Stew, Cake, Chocolate cake, Plain pizza, Meat pizza, Anchovy pizza, Pineapple pizza, Redberry pie, Meat pie, Apple pie |
 | `foodWithdraw` | number (1–27) | `12` | Food per trip |
 | `eatAtHp` | number (1–99) | `50` | Eat below HP% |

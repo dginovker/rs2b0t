@@ -6,6 +6,7 @@ import { Traversal } from '../api/Traversal.js';
 import { ContinueDialog } from '../api/tasks/ContinueDialog.js';
 import { DeathRecovery } from '../api/tasks/DeathRecovery.js';
 import { Bank } from '../api/hud/Bank.js';
+import { Equipment } from '../api/hud/Equipment.js';
 import { Inventory } from '../api/hud/Inventory.js';
 import { Paint } from '../api/hud/Paint.js';
 import { Skills } from '../api/hud/Skills.js';
@@ -38,6 +39,7 @@ const DEFAULT_LOOT = [LIMPWURT, BIG_BONES];
 
 export const HILL_GIANT_SETTINGS: SettingsSchema = {
     meleeStyle: { type: 'string', default: 'strength', options: COMBAT_STYLE_OPTIONS, label: 'Melee style', help: 'which melee stat to train; re-applied each login since com_mode is not saved' },
+    weapon: { type: 'string', default: '', label: 'Weapon to wield', help: 'kept wielded, withdrawn from the bank when missing and re-worn after a death. Leave blank to fight with whatever you are already wearing.' },
     food: { type: 'string', default: 'Trout', options: FOOD_OPTIONS, label: 'Food', group: 'Food & healing' },
     foodWithdraw: { type: 'number', default: 12, min: 1, max: 27, label: 'Food per trip', group: 'Food & healing' },
     eatAtHp: { type: 'number', default: 50, min: 1, max: 99, label: 'Eat below HP%', group: 'Food & healing' },
@@ -54,6 +56,7 @@ function hpFrac(): number {
 
 export default class HillGiant extends TaskBot {
     private meleeStyle: MeleeCombatStyle = 'strength';
+    private weapon = '';
     private foodName = 'Trout';
     private foodPerTrip = 12;
     private eatAt = 0.5;
@@ -74,6 +77,7 @@ export default class HillGiant extends TaskBot {
         await Execution.delayUntil(() => Game.ingame() && Game.tile() !== null, 0);
 
         this.meleeStyle = parseCombatStyle(this.settings.str('meleeStyle', 'strength'));
+        this.weapon = this.settings.str('weapon', '').trim();
         this.foodName = this.settings.str('food', 'Trout');
         this.foodPerTrip = this.settings.num('foodWithdraw', 12);
         this.eatAt = this.settings.num('eatAtHp', 50) / 100;
@@ -96,11 +100,12 @@ export default class HillGiant extends TaskBot {
                 radius: PIT_RADIUS,
                 onDeath: () => {
                     this.setStatus('died — recovering');
-                    this.log('died! re-equipping and returning');
+                    this.log('died! walking back and re-wielding whatever gear survived');
                 },
                 walkBack: () => this.travelToPit()
             }),
             new Eat(this),
+            new GearEquip(this),
             new BuryBones(this),
             new BankRun(this),
             new FetchKey(this),
@@ -136,6 +141,10 @@ export default class HillGiant extends TaskBot {
     // A fresh spot each trip keeps several bots from stacking on one corner.
     rerollSpot(): void {
         this.spot = pickSpot(Math.random()) as Tile;
+    }
+
+    wantsWeapon(): string {
+        return this.weapon;
     }
 
     cfg() {
@@ -264,6 +273,27 @@ class Eat implements Task {
     }
 }
 
+/** Keeps the chosen weapon wielded — on the first trip and after a death. */
+class GearEquip implements Task {
+    private fails = 0;
+    constructor(private bot: HillGiant) {}
+    validate(): boolean {
+        const weapon = this.bot.wantsWeapon();
+        return weapon !== '' && this.fails < 5 && !Equipment.contains(weapon) && Inventory.contains(weapon);
+    }
+    async execute(): Promise<void> {
+        const weapon = this.bot.wantsWeapon();
+        this.bot.setStatus(`wielding ${weapon}`);
+        if (await Equipment.equip(weapon)) {
+            this.bot.log(`wielded ${weapon}`);
+            this.fails = 0;
+        } else {
+            this.fails++;
+            this.bot.log(`could not wield ${weapon} (attempt ${this.fails}/5)`);
+        }
+    }
+}
+
 class BuryBones implements Task {
     constructor(private bot: HillGiant) {}
     validate(): boolean {
@@ -308,6 +338,14 @@ class BankRun implements Task {
                 await Bank.withdrawX(BRASS_KEY, 1);
             } else {
                 this.bot.log(`no ${BRASS_KEY} banked — fetching one from the Edgeville dungeon`);
+            }
+        }
+        const weapon = this.bot.wantsWeapon();
+        if (weapon !== '' && !Equipment.contains(weapon) && !Inventory.contains(weapon)) {
+            if (Bank.count(weapon) > 0) {
+                await Bank.withdrawX(weapon, 1);
+            } else {
+                this.bot.log(`no ${weapon} banked to replace the lost one — fighting unarmed until one is banked`);
             }
         }
         if (needs.food > 0) {
