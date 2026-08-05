@@ -18,7 +18,7 @@ import { castsAvailable, runeWithdrawList } from '../api/combat/CombatStyleLogic
 import { SPELL_DB } from '../api/combat/data/spelldb.js';
 import { DROP_DB } from '../api/combat/data/dropdb.js';
 import { BOWS, STAFFS } from '../api/combat/equipment.js';
-import { FOOD_OPTIONS, foodForms, foodCount as foodCountIn } from '../api/combat/food.js';
+import { FOOD_OPTIONS, foodForms, foodCount as foodCountIn, foodHealAmount, shouldEatToUseFood } from '../api/combat/food.js';
 import { combatKeepNames } from '../api/combat/keepList.js';
 import { depositAllExcept, matchesCommonBankLoot } from '../api/Banking.js';
 import { GroundItems } from '../api/queries/GroundItems.js';
@@ -58,7 +58,7 @@ export const SETTINGS: SettingsSchema = {
 
     food: { type: 'string', default: 'Lobster', options: FOOD_OPTIONS, label: 'Food', group: 'Food & healing' },
     foodWithdraw: { type: 'number', default: 20, min: 1, max: 27, label: 'Food to withdraw per bank run', group: 'Food & healing' },
-    eatHp: { type: 'number', default: 50, min: 1, max: 99, label: 'Eat below HP%', group: 'Food & healing' },
+
     panicHp: { type: 'number', default: 25, min: 1, max: 98, label: 'Panic-to-bank below HP%', group: 'Food & healing', help: 'retreat to the bank when HP drops this low (out of food, or damage outpacing eating)' },
 
     loot: { type: 'string[]', default: DEFAULT_LOOT, options: DROPS, label: 'Loot to pick up (drop table)', group: 'Banking & loot', help: 'the moss giant drop table; ticked drops get grabbed. Everything picked up is banked — the bank keeps only food/runes/ammo/weapon.' },
@@ -75,7 +75,7 @@ let WEAPON = '';
 let SPELL = 'Wind Strike';
 let AMMO = 'Iron arrow';
 let FOOD_NAME = 'Lobster';
-let EAT_HP = 0.5;
+
 let PANIC_HP = 0.25;
 let RUNES_WITHDRAW = 150;
 let AMMO_WITHDRAW = 500;
@@ -98,6 +98,19 @@ function foodCount(): number {
 function hasFood(): boolean {
     return foodCount() > 0;
 }
+
+function needEat(): boolean {
+    if (!hasFood()) {
+        return false;
+    }
+    return shouldEatToUseFood({
+        hp: Skills.effective('hitpoints'),
+        maxHp: Skills.level('hitpoints'),
+        heal: foodHealAmount(FOOD_NAME),
+        foodCount: 1
+    });
+}
+
 function castsLeft(): number {
     return castsAvailable(SPELL, wieldedNames(), rune => Inventory.count(rune));
 }
@@ -185,7 +198,7 @@ async function lootOnce(bot: MossGiant): Promise<boolean> {
 class Eat implements Task {
     constructor(private bot: MossGiant) {}
     validate(): boolean {
-        return hpFrac() < EAT_HP && hasFood();
+        return needEat();
     }
     async execute(): Promise<void> {
         await eatOnce(this.bot);
@@ -471,7 +484,7 @@ class Fight implements Task {
             if (EventSignal.pending() || this.bot.died || ChatDialog.canContinue()) {
                 return;
             }
-            if (hpFrac() < EAT_HP && hasFood()) {
+            if (needEat()) {
                 await eatOnce(this.bot);
                 continue;
             }
@@ -550,7 +563,7 @@ export default class MossGiant extends TaskBot {
         WEAPON = STYLE === 'mage' ? this.settings.str('staff', 'Staff of air')
             : STYLE === 'range' ? this.settings.str('bow', 'Maple shortbow') : '';
         FOOD_NAME = this.settings.str('food', 'Lobster');
-        EAT_HP = this.settings.num('eatHp', 50) / 100;
+
         PANIC_HP = this.settings.num('panicHp', 25) / 100;
         RUNES_WITHDRAW = this.settings.num('runesWithdraw', 150);
         AMMO_WITHDRAW = this.settings.num('ammoWithdraw', 500);
@@ -569,7 +582,7 @@ export default class MossGiant extends TaskBot {
         this.startedAt = Date.now();
         this.xpAtStart = XP_SKILLS.reduce((n, sk) => n + Skills.xp(sk), 0);
 
-        this.log(`MossGiant — style ${STYLE}${STYLE !== 'melee' ? ` w/ ${WEAPON}` : ''}${STYLE === 'mage' ? ` (${SPELL})` : ''}, food '${FOOD_NAME}' (eat<${Math.round(EAT_HP * 100)}%, panic<${Math.round(PANIC_HP * 100)}%), safespot ${SAFESPOT}, bank ${BANK_TILE}${BURY_BONES ? ', burying big bones' : ''}`);
+        this.log(`MossGiant — style ${STYLE}${STYLE !== 'melee' ? ` w/ ${WEAPON}` : ''}${STYLE === 'mage' ? ` (${SPELL})` : ''}, food '${FOOD_NAME}' (smart-eat, panic<${Math.round(PANIC_HP * 100)}%), safespot ${SAFESPOT}, bank ${BANK_TILE}${BURY_BONES ? ', burying big bones' : ''}`);
 
         this.add(
             new ContinueDialog(),
