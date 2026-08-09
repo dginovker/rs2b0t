@@ -21,11 +21,11 @@ describe('auto-login queue paint', () => {
             fillText: (value: string, x: number, y: number) => text.push({ value, x, y })
         } as unknown as CanvasRenderingContext2D;
 
-        paintLoginQueue(ctx);
+        paintLoginQueue(ctx, { position: 27, total: 103 });
 
         expect(text.map(line => line.value)).toEqual([
-            'AUTO-LOGIN QUEUED',
-            'Waiting for the next login slot'
+            'AUTO-LOGIN QUEUE',
+            'Position 27 of 103'
         ]);
         expect(fills[0]).toEqual([
             LOGIN_QUEUE_PAINT_RECT.x,

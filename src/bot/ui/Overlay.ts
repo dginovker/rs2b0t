@@ -42,14 +42,14 @@ export default class Overlay {
             pathEnabled && path !== null && path.tiles.length > 0;
         const bot = ScriptRunner.paintBot;
         const botPaint = Boolean(bot?.onPaint);
-        const loginQueued = AutoRelogin.isWaitingForLoginPermit();
+        const loginQueueStatus = AutoRelogin.loginQueueStatus();
 
         if (!shouldPaintOverlay({
             pathEnabled,
             pathTiles: path?.tiles.length ?? 0,
             scriptPaintReady: bot !== null,
             hasOnPaint: Boolean(bot?.onPaint),
-            loginQueued
+            loginQueued: loginQueueStatus !== null
         })) {
             if (this.hadContent) {
                 ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -74,10 +74,10 @@ export default class Overlay {
             }
         }
 
-        if (loginQueued) {
+        if (loginQueueStatus !== null) {
             try {
                 ctx.save();
-                paintLoginQueue(ctx);
+                paintLoginQueue(ctx, loginQueueStatus);
             } catch (err) {
                 console.error('[rs2b0t] login queue paint error', err);
             } finally {
