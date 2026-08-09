@@ -52,6 +52,11 @@ class AutoReloginImpl {
         return this.autoLogin;
     }
 
+    /** Whether this client is waiting for the shared multibox login permit. */
+    isWaitingForLoginPermit(): boolean {
+        return this.waitingForPermit;
+    }
+
     setLoginCoordination(coordination: LoginCoordination | null): void {
         this.coordination = coordination;
         this.waitingForPermit = false;
@@ -62,6 +67,7 @@ class AutoReloginImpl {
             Credentials.save(username, password);
         } else {
             Credentials.clear();
+            this.waitingForPermit = false;
         }
     }
 
@@ -91,6 +97,7 @@ class AutoReloginImpl {
 
     private onFrame(): void {
         if (reader.ingame()) {
+            this.waitingForPermit = false;
             const live = actions.loginCredentials();
             const saved = this.creds();
             if (live.username.length > 0 && (!saved || live.username !== saved.username || live.password !== saved.password)) {
@@ -136,6 +143,7 @@ class AutoReloginImpl {
         }
 
         if (!this.reconnecting || !c) {
+            this.waitingForPermit = false;
             return;
         }
 
