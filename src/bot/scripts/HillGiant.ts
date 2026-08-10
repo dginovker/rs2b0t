@@ -22,7 +22,7 @@ import { Locs } from '../api/queries/Locs.js';
 import { Npcs, type Npc } from '../api/queries/Npcs.js';
 import { matchesEntityName } from '../api/queries/Query.js';
 import { ScriptRunner } from '../runtime/ScriptRunner.js';
-import type { SettingsSchema } from '../runtime/Settings.js';
+import { SettingsBag, SettingsStore, type SettingsSchema } from '../runtime/Settings.js';
 import { BIG_BONES, BRASS_KEY, LIMPWURT, PIT_SPOTS, bonesAction, isHillGiantKill, keepOnDeposit, pickSpot, shouldBank, shouldEatForSpace, tripNeeds } from './HillGiantLogic.js';
 
 const TARGET = 'Giant';
@@ -49,7 +49,7 @@ export const HILL_GIANT_SETTINGS: SettingsSchema = {
 
     loot: { type: 'string[]', default: DEFAULT_LOOT, options: DROPS, label: 'Loot to pick up', group: 'Banking & loot', help: 'limpwurt roots and big bones by default; everything picked up is banked' },
     bankCommonJunk: { type: 'boolean', default: true, label: 'Also grab shared gems/junk', group: 'Banking & loot' },
-    buryBones: { type: 'boolean', default: false, label: 'Bury big bones', group: 'Banking & loot', help: 'bury Big bones for Prayer xp instead of banking them' },
+    buryBones: { type: 'boolean', default: false, label: 'Bury big bones', group: 'Banking & loot', help: 'bury Big bones for Prayer xp instead of banking them; changes take effect immediately' },
     lootSlots: { type: 'number', default: 14, min: 1, max: 27, label: 'Bank after this many loot slots', group: 'Banking & loot' }
 };
 
@@ -68,6 +68,7 @@ export default class HillGiant extends TaskBot {
     private lootSet = new Set<string>();
     private bankCommon = true;
     private buryBones = false;
+    private stopWatchingSettings: (() => void) | null = null;
     private lootSlots = 14;
 
     private spot: Tile = PIT_SPOTS[0] as Tile;
@@ -93,6 +94,34 @@ export default class HillGiant extends TaskBot {
         if (this.buryBones) {
             this.lootSet.add(BIG_BONES.toLowerCase());
         }
+        this.stopWatchingSettings?.();
+        const syncBuryBones = (announce: boolean): void => {
+            const current = new SettingsBag(SettingsStore.resolve('HillGiant', HILL_GIANT_SETTINGS));
+            const enabled = current.bool('buryBones', false);
+            const changed = enabled !== this.buryBones;
+            this.buryBones = enabled;
+
+            const bigBones = BIG_BONES.toLowerCase();
+            const configuredLoot = current.list('loot', DEFAULT_LOOT)
+                .some(name => name.toLowerCase() === bigBones);
+            if (enabled || configuredLoot) {
+                this.lootSet.add(bigBones);
+            } else {
+                this.lootSet.delete(bigBones);
+            }
+            if (announce && changed) {
+                this.log(`big-bone burial ${enabled ? 'enabled' : 'disabled'} — applies immediately`);
+            }
+        };
+        this.stopWatchingSettings = SettingsStore.onChange((name, key) => {
+            if (name !== 'HillGiant' || key !== 'buryBones') {
+                return;
+            }
+            syncBuryBones(true);
+        });
+        // ScriptRunner snapshots settings before onStart. Reconcile after the
+        // readiness wait so a toggle changed during startup cannot be missed.
+        syncBuryBones(false);
         this.rerollSpot();
         this.startedAt = Date.now();
 
@@ -123,6 +152,11 @@ export default class HillGiant extends TaskBot {
             new LootCorpse(this),
             new Fight(this)
         );
+    }
+
+    override onStop(): void {
+        this.stopWatchingSettings?.();
+        this.stopWatchingSettings = null;
     }
 
     override recoveryAnchor(): Tile | null {
@@ -361,6 +395,11 @@ class BuryBones implements Task {
         return this.bot.cfg().buryBones && Inventory.contains(BIG_BONES);
     }
     async execute(): Promise<void> {
+        // The setting can change between task selection and this click. Treat the
+        // current disabled state as authoritative for this irreversible action.
+        if (!this.bot.cfg().buryBones) {
+            return;
+        }
         const bones = Inventory.first(BIG_BONES);
         if (!bones) {
             return;
@@ -370,6 +409,7 @@ class BuryBones implements Task {
         await bones.interact('Bury');
         if (await Execution.delayUntil(() => Inventory.count(BIG_BONES) < before, 4000)) {
             this.bot.countBurial();
+            this.bot.log('buried Big bones (burial toggle enabled)');
         }
     }
 }
