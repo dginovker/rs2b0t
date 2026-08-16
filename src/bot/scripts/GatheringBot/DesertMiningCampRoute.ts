@@ -236,9 +236,7 @@ export function planDesertCampSupplies(
     let requiredSlots = withdraw.reduce((slots, step) => slots + (step.name === DESERT_CAMP_ITEMS.coins && countOf(snap.inventory, step.name) > 0 ? 0 : step.name === DESERT_CAMP_ITEMS.coins ? 1 : step.qty), 0);
     requiredSlots += buyOutfit.length;
     if (buyPass && countOf(snap.inventory, DESERT_CAMP_ITEMS.pass) === 0) requiredSlots++;
-    // The desk grants every missing key in order. With neither camp key available,
-    // the peak route load is Cell + Metal + Wrought, so the bank must leave three slots.
-    // Surface metal recovery can still hit the desk and receive the extra keys.
+    // Desk awards every missing key, so surface metal recovery still reserves three slots.
     if (recoverMetalKey && (recoverWroughtKey || surface)) {
         requiredSlots += 3;
     } else if (recoverWroughtKey) {
