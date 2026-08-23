@@ -1,4 +1,4 @@
-# Why: main requires a status named CodeQL, and this repo has no CodeQL workflow, so every PR sat on "Expected" forever.
+# Why: main requires a CodeQL check from GitHub's code-scanning app, and a stub Actions job is rejected as the wrong app.
 name: CodeQL
 
 on:
@@ -8,12 +8,16 @@ on:
 
 permissions:
   contents: read
+  security-events: write
+  actions: read
 
 jobs:
-  CodeQL:
+  analyze:
     name: CodeQL
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: CodeQL
-        run: echo 'CodeQL workflow present'
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v3
