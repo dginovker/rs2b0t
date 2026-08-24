@@ -267,14 +267,15 @@ export const Bank = {
         if (!item?.name) {
             return false;
         }
+        const itemName = item.name;
         const allOp = withdrawOp(item.ops, 'all');
         if (allOp) {
             const before = Inventory.used();
-            if (!(await Bank.withdraw(item.name, allOp))) {
+            if (!(await Bank.withdraw(itemName, allOp))) {
                 return false;
             }
             return Execution.delayUntil(
-                () => Inventory.used() > before || Inventory.isFull() || Bank.count(item.name) === 0,
+                () => Inventory.used() > before || Inventory.isFull() || Bank.count(itemName) === 0,
                 4000
             );
         }
@@ -282,7 +283,7 @@ export const Bank = {
         if (want <= 0) {
             return true;
         }
-        return Bank.withdrawX(item.name, want);
+        return Bank.withdrawX(itemName, want);
     },
 
     deposit(name: string, op: string = 'Deposit-1'): boolean | Promise<boolean> {
