@@ -95,7 +95,7 @@ export function spiderSafeVia(
     return here === null || !isNear(here, SPIDER_SAFE, 3);
 }
 
-/** True once essence has actually left the pack after a trade confirm (#730). */
+/** True once unnoted essence has left the pack after a trade confirm (#730). */
 export function tradeDelivered(beforeUnnoted: number, nowUnnoted: number): boolean {
     return nowUnnoted < beforeUnnoted;
 }
