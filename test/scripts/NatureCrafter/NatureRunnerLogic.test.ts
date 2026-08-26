@@ -128,7 +128,7 @@ describe('offerCount (trade-window law: never more than 25)', () => {
 });
 
 describe('tradeDelivered', () => {
-    test('true only when unnoted essence actually left the pack', () => {
+    test('true only when unnoted essence has left the pack', () => {
         expect(tradeDelivered(25, 0)).toBe(true);
         expect(tradeDelivered(25, 10)).toBe(true);
         expect(tradeDelivered(25, 25)).toBe(false);
@@ -141,7 +141,7 @@ describe('spiderSafeVia', () => {
     const ruins = { x: 2865, z: 3022 };
 
     test('store and altar walks hop via 2790,3094 when not already there', () => {
-        expect(SPIDER_SAFE).toEqual({ x: 2790, z: 3094, level: 0 });
+        expect([SPIDER_SAFE.x, SPIDER_SAFE.z, SPIDER_SAFE.level]).toEqual([2790, 3094, 0]);
         expect(spiderSafeVia({ x: 2767, z: 3122 }, ruins, store, ruins)).toBe(true);
         expect(spiderSafeVia({ x: 2865, z: 3022 }, store, store, ruins)).toBe(true);
     });
